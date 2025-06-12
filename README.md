@@ -1,18 +1,19 @@
 # junos-mcp-server
 
-
+A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM interactions with network equipment.
 
 ## Getting started
 
 Get the code.
-```
-git clone git@eng-gitlab.juniper.net:manageability/junos-mcp-server.git
-pip install -r requirements.txt
+```bash
+git clone https://github.com/Juniper/junos-mcp-server.git
 cd junos-mcp-server
+pip install -r requirements.txt
 ```
+
 ## Start Junos MCP server
 
-```
+```bash
 $ python3.11 jmcp.py --help
 Junos MCP Server
 
@@ -29,7 +30,8 @@ options:
 Junos MCP server supports both streamable-http and stdio transport. Do not use --host with stdio transport.
 
 ## Config for Claude desktop [using stdio transport]
-```
+
+```json
 {
   "mcpServers": {
     "jmcp": {
@@ -39,19 +41,19 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
     }
   }
 }
-
-Note: Please provide absolute path for jmcp.py and devices.json file.
 ```
+
+**Note:** Please provide absolute path for jmcp.py and devices.json file.
 
 ## Junos device config 
 
 Junos MCP server supports both password based auth as well as ssh key based auth.
 
-```
+```json
 {
     "router-1": {
         "ip": "ip-addr",
-        "port": "port-value",
+        "port": 22,
         "username": "user",
         "auth": {
             "type": "password",
@@ -60,7 +62,7 @@ Junos MCP server supports both password based auth as well as ssh key based auth
     },
     "router-2": {
         "ip": "ip-addr",
-        "port": "port-value",
+        "port": 22,
         "username": "user",
         "auth": {
             "type": "ssh_key",
@@ -69,7 +71,7 @@ Junos MCP server supports both password based auth as well as ssh key based auth
     },
     "router-3": {
         "ip": "ip-addr",
-        "port": "port-value",
+        "port": 22,
         "username": "user",
         "auth": {
             "type": "password",
@@ -77,14 +79,15 @@ Junos MCP server supports both password based auth as well as ssh key based auth
         }
     }
 }
-
-Note: port-value should be int.
 ```
 
-## VSCode + Githubcopilot + Junos MCP server using streamable-http transport
+**Note:** Port value should be an integer (typically 22 for SSH).
+
+## VSCode + GitHub Copilot + Junos MCP server using streamable-http transport
 
 ### Start your server
-```
+
+```bash
 $ python3.11 jmcp.py -f devices.json
 [06/11/25 08:26:11] INFO     Starting MCP server 'jmcp-server' with transport 'streamable-http' on http://127.0.0.1:30030/mcp
 INFO:     Started server process [33512]
@@ -94,6 +97,9 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 ```
 
 ### Point to this URL in your VSCode config
+
+```json
+{
     "mcp": {
         "servers": {
             "my-junos-mcp-server": {
@@ -101,10 +107,14 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
             }
         }
     }
+}
+```
 
-Note: You can use VSCode's CMD+Shift+p to configure MCP server.
+**Note:** You can use VSCode's `Cmd+Shift+P` to configure MCP server.
 
+## ⚠️ Important Security Notice
 
+**Please use this only if your company's policy allows sending data from your Junos device to LLM services.**
 
 
 
