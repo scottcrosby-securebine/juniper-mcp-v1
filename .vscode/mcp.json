@@ -1,0 +1,7 @@
+{
+    "servers": {
+        "my-junos-mcp-server": {
+            "url": "http://127.0.0.1:30030/mcp/"
+        }
+    }
+}

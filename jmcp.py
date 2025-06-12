@@ -159,7 +159,6 @@ def gather_device_facts(router_name: str) -> str:
     
     try:
         with Device(**connect_params) as junos_device:
-            junos_device.open()
             facts = junos_device.facts
             facts_str = json.dumps(facts)
             return facts_str
