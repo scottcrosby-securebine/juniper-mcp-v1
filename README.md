@@ -2,6 +2,28 @@
 
 A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM interactions with network equipment.
 
+## ⚠️ Important Security Notice
+
+> **Warning:** This server enables LLM access to your network infrastructure. Please review these security considerations carefully.
+
+### 🔒 Security Requirements
+
+- **Corporate Policy Compliance**: Only use this server if your company's policy allows sending data of Junos devices to LLM services.
+
+- **Server Security**: Always secure your Junos MCP server before deployment in production environments.
+
+- **Authentication**: Do **not** use password authentication for production deployments. We strongly recommend using SSH key-based authentication for enhanced security.
+
+- **Deployment Strategy**: Until your MCP server is properly secured, only deploy locally for testing purposes. Do not deploy remote servers in production without proper security measures.
+
+### 🛡️ Security Best Practices
+
+- Use SSH key authentication instead of passwords
+- Implement proper network access controls
+- Monitor and log all MCP server activities
+- Regular security audits and updates
+- Follow your organization's security policies
+
 ## Getting started
 
 Get the code.
@@ -111,10 +133,3 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 ```
 
 **Note:** You can use VSCode's `Cmd+Shift+P` to configure MCP server.
-
-## ⚠️ Important Security Notice
-
-**Please use this only if your company's policy allows sending data from your Junos device to LLM services.**
-
-
-
