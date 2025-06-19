@@ -1,2 +1,11 @@
+# Core dependencies for Junos MCP Server
 fastmcp
 junos-eznc
+psutil
+
+# Additional dependencies that might be needed
+paramiko
+ncclient
+lxml
+jxmlease
+pyserial

@@ -180,6 +180,75 @@ def get_router_list() -> str:
     routers_str = ', '.join(routers)
     return routers_str
 
+@mcp.tool()
+def load_and_commit_config(router_name: str, config_text: str, config_format: str = "set", commit_comment: str = "Configuration loaded via MCP") -> str:
+    """Load and commit configuration on a Junos router
+    
+    Args:
+        router_name(str): The name of the router on which to load and commit configuration
+        config_text(str): The configuration text to load (can be set commands, text format, or XML)
+        config_format(str): The format of the configuration. Options: "set", "text", "xml". Default is "set"
+        commit_comment(str): Optional comment for the commit operation. Default is "Configuration loaded via MCP"
+    
+    Returns:
+        Status message indicating success or failure of the load and commit operation
+    """
+    log.debug(f"Loading and committing config on router {router_name} with format {config_format}")
+    device_info = devices[router_name]
+    
+    try:
+        connect_params = prepare_connection_params(device_info, router_name)
+    except ValueError as ve:
+        return f"Error: {ve}"
+    
+    try:
+        with Device(**connect_params) as junos_device:
+            # Initialize configuration utility
+            config_util = Config(junos_device)
+            
+            # Lock the configuration
+            try:
+                config_util.lock()
+            except Exception as e:
+                return f"Failed to lock configuration: {e}"
+            
+            try:
+                # Load the configuration based on format
+                if config_format.lower() == "set":
+                    config_util.load(config_text, format='set')
+                elif config_format.lower() == "text":
+                    config_util.load(config_text, format='text')
+                elif config_format.lower() == "xml":
+                    config_util.load(config_text, format='xml')
+                else:
+                    config_util.unlock()
+                    return f"Error: Unsupported config format '{config_format}'. Use 'set', 'text', or 'xml'"
+                
+                # Check for differences
+                diff = config_util.diff()
+                if not diff:
+                    config_util.unlock()
+                    return "No configuration changes detected"
+                
+                # Commit the configuration
+                config_util.commit(comment=commit_comment)
+                config_util.unlock()
+                
+                return f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
+                
+            except Exception as e:
+                # If anything fails, rollback and unlock
+                try:
+                    config_util.rollback()
+                    config_util.unlock()
+                except:
+                    pass
+                return f"Failed to load/commit configuration: {e}"
+                
+    except ConnectError as ce:
+        return f"Connection error to {router_name}: {ce}"
+    except Exception as e:
+        return f"An error occurred: {e}"
 
 def main():
     # Create the parser
