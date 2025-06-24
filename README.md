@@ -95,13 +95,54 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
   }
 }
 ```
+## Docker Usage
+
+### Build Docker Container
+
+```bash
+$ docker build -t junos-mcp-server:latest .
+```
+
+### Running with Default Settings
+
+By default, the Docker container runs with stdio transport:
+
+```bash
+$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json junos-mcp-server:latest
+```
+
+This uses the default command: `python jmcp.py -f /app/config/devices.json -t stdio`
+
+### Overriding Default Arguments
+
+You can override any arguments by specifying the full command:
+
+**For stdio transport:**
+```bash
+$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t stdio
+```
+
+**For streamable-http transport:**
+```bash
+$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json -p 30030:30030 junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+```
+
+**For streamable-http with custom port:**
+```bash
+$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json -p 8080:8080 junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t streamable-http -p 8080 -H 0.0.0.0
+```
+
+**Note:** 
+- Always mount your device configuration file using `-v /path/to/your/devices.json:/app/config/devices.json`
+- For streamable-http transport, expose the port using `-p host_port:container_port`
+- Mount any SSH private key files if using key-based authentication (e.g., `-v /path/to/key.pem:/app/config/key.pem`)
+
 Build docker container for Junos MCP Server
 ```
 $ docker build -t junos-mcp-server:latest .
 ```
 
 **Note:** Mount your config file (devices.json) and mount any other files, in my case I am using pem file for ssh priv key authentication so I am also mounting vsrx_keypair.pem
-
 ## Junos device config 
 
 Junos MCP server supports both password based auth as well as ssh key based auth.
