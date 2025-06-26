@@ -57,7 +57,8 @@ def prepare_connection_params(device_info: dict, router_name: str) -> dict:
         'host': device_info['ip'],
         'port': device_info['port'],
         'user': device_info['username'],
-        'gather_facts': False
+        'gather_facts': False,
+        'timeout': 360  # Default timeout of 360 seconds
     }
     
     # Handle different authentication methods
@@ -77,35 +78,39 @@ def prepare_connection_params(device_info: dict, router_name: str) -> dict:
     
     return connect_params
 
-@mcp.tool()
-def execute_junos_command(router_name: str, command: str) -> str:
-    """Execute a Junos command on the router router_name
-
-    Args:
-        router_name(str): The name of the router.
-        command(str): The command to execute on the router.
-
-    Returns:
-        The command output from router named router_name.
-
-    """
-    log.debug(f"Executing command {command} on router {router_name}")
+def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -> str:
+    """Internal helper to connect and run a Junos CLI command."""
+    log.debug(f"Executing command {command} on router {router_name} with timeout {timeout}s (internal)")
     device_info = devices[router_name]
-    
     try:
         connect_params = prepare_connection_params(device_info, router_name)
     except ValueError as ve:
         return f"Error: {ve}"
-    
     try:
         with Device(**connect_params) as junos_device:
             junos_device.open()
+            junos_device.timeout = timeout
             op = junos_device.cli(command, warning=False)
             return op
     except ConnectError as ce:
         return f"Connection error to {router_name}: {ce}"
     except Exception as e:
         return f"An error occurred: {e}"
+
+@mcp.tool()
+def execute_junos_command(router_name: str, command: str, timeout: int = 360) -> str:
+    """Execute a Junos command on the router router_name
+
+    Args:
+        router_name(str): The name of the router.
+        command(str): The command to execute on the router.
+        timeout(int): Command timeout in seconds. Default is 360 seconds.
+
+    Returns:
+        The command output from router named router_name.
+
+    """
+    return _run_junos_cli_command(router_name, command, timeout)
 
 @mcp.tool()
 def get_junos_config(router_name: str) -> str:
@@ -118,7 +123,7 @@ def get_junos_config(router_name: str) -> str:
         The configuration of the router named router_name.
     
     """   
-    return execute_junos_command(router_name, "show configuration | display inheritance | display set")
+    return _run_junos_cli_command(router_name, "show configuration | display inheritance no-comments | no-more")
 
 @mcp.tool()
 def junos_config_diff(router_name: str, version: int) -> str:
@@ -137,14 +142,15 @@ def junos_config_diff(router_name: str, version: int) -> str:
         The configuration diff (output of show | compare) of the router named router_name.
     
     """   
-    return execute_junos_command(router_name, f"show configuration | compare rollback {version}")
+    return _run_junos_cli_command(router_name, f"show configuration | compare rollback {version}")
 
 @mcp.tool()
-def gather_device_facts(router_name: str) -> str:  
+def gather_device_facts(router_name: str, timeout: int = 360) -> str:  
     """Gather Junos device facts from the router router_name
         
     Args:
-        router_name(str): The name of the router from which the facts need to be collected.  
+        router_name(str): The name of the router from which the facts need to be collected.
+        timeout(int): Connection timeout in seconds. Default is 360 seconds.
 
     Returns:
         The gathered facts from Junos device using Junos PyEZ.
@@ -154,6 +160,7 @@ def gather_device_facts(router_name: str) -> str:
     device_info = devices[router_name]
     try:
         connect_params = prepare_connection_params(device_info, router_name)
+        connect_params['timeout'] = timeout
     except ValueError as ve:
         return f"Error: {ve}"
     
