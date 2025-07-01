@@ -209,3 +209,19 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 ```
 
 **Note:** You can use VSCode's `Cmd+Shift+P` to configure MCP server.
+
+### Using MCP server with Juniper Cloud-Native Router (JCNR)
+
+JCNR is a cloud native router that runs on various cloud environments. One can use this MCP server with JCNR as well by following the steps given below. Please refer to JCNR documentation for more details on configuration.
+
+- Configure SSH access in JCNR on a desired port other than 22. This is required because, JCNR runs as a container on shared operating system. Running SSH on default port is not recommended. By default SSH is enabled on port 24. But, it is preferred to change this to desired port depending on your networking needs. 
+- Enable authentication method for SSH. JCNR supports SSH key and password based authentications.
+- Enable Netconf over SSH. This is enabled by default. 
+
+```
+set system services netconf ssh
+set system services ssh port 3030
+set system services ssh root-login allow
+set system root-authentication encrypted-password "$6$3vvMI$RNemhmu9izWXzO46msh38frIg4VoeFNJWJZugxgnU.NQso3OQ00QWOIZmzNePD.MWjDODxBBEYut/W7kfADdV." (or)
+set system root-authentication load-key-file <public key>
+```
