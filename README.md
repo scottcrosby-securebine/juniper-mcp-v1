@@ -39,6 +39,12 @@ cd junos-mcp-server
 pip install -r requirements.txt
 ```
 
+### Running with uv
+If you're using [uv](https://github.com/astral-sh/uv), you can run the server directly:
+```bash
+uv run python jmcp.py -f devices.json -t stdio
+```
+
 ## Start Junos MCP server
 
 ```bash
@@ -66,6 +72,20 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
       "type": "stdio",
       "command": "python3",
       "args": ["jmcp.py", "-f", "devices.json", "-t", "stdio"]
+    }
+  }
+}
+```
+
+### Config for Claude desktop [using uv]
+
+```json
+{
+  "mcpServers": {
+    "jmcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "jmcp.py", "-f", "devices.json", "-t", "stdio"]
     }
   }
 }

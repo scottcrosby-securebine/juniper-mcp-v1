@@ -1,0 +1,16 @@
+[project]
+name = "junos-mcp-server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.10.6",
+    "junos-eznc>=2.7.4",
+    "jxmlease>=1.0.3",
+    "lxml>=6.0.0",
+    "ncclient>=0.6.15",
+    "paramiko>=3.5.1",
+    "psutil>=7.0.0",
+    "pyserial>=3.5",
+]
