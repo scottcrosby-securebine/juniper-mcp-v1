@@ -22,8 +22,9 @@ import logging
 import os
 import json
 import sys
+import signal
 
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 from jnpr.junos import Device
 from jnpr.junos.exception import ConnectError
 from jnpr.junos.utils.config import Config
@@ -36,7 +37,6 @@ devices = {}
 
 # Junos MCP Server
 JUNOS_MCP = 'jmcp-server'
-mcp = FastMCP(name=JUNOS_MCP)
 
 
 def prepare_connection_params(device_info: dict, router_name: str) -> dict:
@@ -97,165 +97,171 @@ def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -
     except Exception as e:
         return f"An error occurred: {e}"
 
-@mcp.tool()
-def execute_junos_command(router_name: str, command: str, timeout: int = 360) -> str:
-    """Execute a Junos command on the router router_name
-
-    Args:
-        router_name(str): The name of the router.
-        command(str): The command to execute on the router.
-        timeout(int): Command timeout in seconds. Default is 360 seconds.
-
-    Returns:
-        The command output from router named router_name.
-
-    """
-    return _run_junos_cli_command(router_name, command, timeout)
-
-@mcp.tool()
-def get_junos_config(router_name: str) -> str:
-    """Get the configuration of the router router_name
+def create_mcp_server(name: str, **kwargs) -> FastMCP:
+    """Create and configure the MCP server with all tools"""
+    mcp = FastMCP(name=name, **kwargs)
     
-    Args:
-        router_name(str): The name of the router on which to get the configuration.                
+    @mcp.tool()
+    def execute_junos_command(router_name: str, command: str, timeout: int = 360) -> str:
+        """Execute a Junos command on the router router_name
 
-    Returns:
-        The configuration of the router named router_name.
-    
-    """   
-    return _run_junos_cli_command(router_name, "show configuration | display inheritance no-comments | no-more")
+        Args:
+            router_name(str): The name of the router.
+            command(str): The command to execute on the router.
+            timeout(int): Command timeout in seconds. Default is 360 seconds.
 
-@mcp.tool()
-def junos_config_diff(router_name: str, version: int) -> str:
-    """Get the configuration diff or delta or patch or changes of a Junos router.
-       Use this function to compare current running config against a particular version of the config.
-       Its compares configuration changes with prior version of the configuration. You can specify 
-       which version to compare as argument. Please use value between 1 and 49.
-    
-    Args:
-        router_name(str): The name of the router on which to get the configuration diff.  
-        version(int): Compare config against the said version. If you are not sure which 
-                      version to compare against, please use value 1. This gives the config
-                      diff from last commit.             
+        Returns:
+            The command output from router named router_name.
 
-    Returns:
-        The configuration diff (output of show | compare) of the router named router_name.
-    
-    """   
-    return _run_junos_cli_command(router_name, f"show configuration | compare rollback {version}")
+        """
+        return _run_junos_cli_command(router_name, command, timeout)
 
-@mcp.tool()
-def gather_device_facts(router_name: str, timeout: int = 360) -> str:  
-    """Gather Junos device facts from the router router_name
+    @mcp.tool()
+    def get_junos_config(router_name: str) -> str:
+        """Get the configuration of the router router_name
         
-    Args:
-        router_name(str): The name of the router from which the facts need to be collected.
-        timeout(int): Connection timeout in seconds. Default is 360 seconds.
+        Args:
+            router_name(str): The name of the router on which to get the configuration.                
 
-    Returns:
-        The gathered facts from Junos device using Junos PyEZ.
+        Returns:
+            The configuration of the router named router_name.
         
-    """  
-                    
-    device_info = devices[router_name]
-    try:
-        connect_params = prepare_connection_params(device_info, router_name)
-        connect_params['timeout'] = timeout
-    except ValueError as ve:
-        return f"Error: {ve}"
-    
-    try:
-        with Device(**connect_params) as junos_device:
-            facts = junos_device.facts
-            facts_str = json.dumps(facts)
-            return facts_str
-    except ConnectError as ce:
-        return f"Connection error to {router_name}: {ce}"
-    except Exception as e:
-        return f"An error occurred: {e}"
+        """   
+        return _run_junos_cli_command(router_name, "show configuration | display inheritance no-comments | no-more")
 
-# Get list of routers
-@mcp.tool()
-def get_router_list() -> str:
-    """Use this function to get list of Junos routers or Junos devices.
+    @mcp.tool()
+    def junos_config_diff(router_name: str, version: int) -> str:
+        """Get the configuration diff or delta or patch or changes of a Junos router.
+           Use this function to compare current running config against a particular version of the config.
+           Its compares configuration changes with prior version of the configuration. You can specify 
+           which version to compare as argument. Please use value between 1 and 49.
         
-    Returns:
-        The list of Junos routers or Junos devices.
-    """
-    log.debug("Getting list of routers")
-    routers = list(devices.keys())
-    routers_str = ', '.join(routers)
-    return routers_str
+        Args:
+            router_name(str): The name of the router on which to get the configuration diff.  
+            version(int): Compare config against the said version. If you are not sure which 
+                          version to compare against, please use value 1. This gives the config
+                          diff from last commit.             
 
-@mcp.tool()
-def load_and_commit_config(router_name: str, config_text: str, config_format: str = "set", commit_comment: str = "Configuration loaded via MCP") -> str:
-    """Load and commit configuration on a Junos router
-    
-    Args:
-        router_name(str): The name of the router on which to load and commit configuration
-        config_text(str): The configuration text to load (can be set commands, text format, or XML)
-        config_format(str): The format of the configuration. Options: "set", "text", "xml". Default is "set"
-        commit_comment(str): Optional comment for the commit operation. Default is "Configuration loaded via MCP"
-    
-    Returns:
-        Status message indicating success or failure of the load and commit operation
-    """
-    log.debug(f"Loading and committing config on router {router_name} with format {config_format}")
-    device_info = devices[router_name]
-    
-    try:
-        connect_params = prepare_connection_params(device_info, router_name)
-    except ValueError as ve:
-        return f"Error: {ve}"
-    
-    try:
-        with Device(**connect_params) as junos_device:
-            # Initialize configuration utility
-            config_util = Config(junos_device)
+        Returns:
+            The configuration diff (output of show | compare) of the router named router_name.
+        
+        """   
+        return _run_junos_cli_command(router_name, f"show configuration | compare rollback {version}")
+
+    @mcp.tool()
+    def gather_device_facts(router_name: str, timeout: int = 360) -> str:  
+        """Gather Junos device facts from the router router_name
             
-            # Lock the configuration
-            try:
-                config_util.lock()
-            except Exception as e:
-                return f"Failed to lock configuration: {e}"
+        Args:
+            router_name(str): The name of the router from which the facts need to be collected.
+            timeout(int): Connection timeout in seconds. Default is 360 seconds.
+
+        Returns:
+            The gathered facts from Junos device using Junos PyEZ.
             
-            try:
-                # Load the configuration based on format
-                if config_format.lower() == "set":
-                    config_util.load(config_text, format='set')
-                elif config_format.lower() == "text":
-                    config_util.load(config_text, format='text')
-                elif config_format.lower() == "xml":
-                    config_util.load(config_text, format='xml')
-                else:
-                    config_util.unlock()
-                    return f"Error: Unsupported config format '{config_format}'. Use 'set', 'text', or 'xml'"
+        """  
+                        
+        device_info = devices[router_name]
+        try:
+            connect_params = prepare_connection_params(device_info, router_name)
+            connect_params['timeout'] = timeout
+        except ValueError as ve:
+            return f"Error: {ve}"
+        
+        try:
+            with Device(**connect_params) as junos_device:
+                facts = junos_device.facts
+                facts_str = json.dumps(facts)
+                return facts_str
+        except ConnectError as ce:
+            return f"Connection error to {router_name}: {ce}"
+        except Exception as e:
+            return f"An error occurred: {e}"
+
+    # Get list of routers
+    @mcp.tool()
+    def get_router_list() -> str:
+        """Use this function to get list of Junos routers or Junos devices.
+            
+        Returns:
+            The list of Junos routers or Junos devices.
+        """
+        log.debug("Getting list of routers")
+        routers = list(devices.keys())
+        routers_str = ', '.join(routers)
+        return routers_str
+
+    @mcp.tool()
+    def load_and_commit_config(router_name: str, config_text: str, config_format: str = "set", commit_comment: str = "Configuration loaded via MCP") -> str:
+        """Load and commit configuration on a Junos router
+        
+        Args:
+            router_name(str): The name of the router on which to load and commit configuration
+            config_text(str): The configuration text to load (can be set commands, text format, or XML)
+            config_format(str): The format of the configuration. Options: "set", "text", "xml". Default is "set"
+            commit_comment(str): Optional comment for the commit operation. Default is "Configuration loaded via MCP"
+        
+        Returns:
+            Status message indicating success or failure of the load and commit operation
+        """
+        log.debug(f"Loading and committing config on router {router_name} with format {config_format}")
+        device_info = devices[router_name]
+        
+        try:
+            connect_params = prepare_connection_params(device_info, router_name)
+        except ValueError as ve:
+            return f"Error: {ve}"
+        
+        try:
+            with Device(**connect_params) as junos_device:
+                # Initialize configuration utility
+                config_util = Config(junos_device)
                 
-                # Check for differences
-                diff = config_util.diff()
-                if not diff:
-                    config_util.unlock()
-                    return "No configuration changes detected"
-                
-                # Commit the configuration
-                config_util.commit(comment=commit_comment)
-                config_util.unlock()
-                
-                return f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
-                
-            except Exception as e:
-                # If anything fails, rollback and unlock
+                # Lock the configuration
                 try:
-                    config_util.rollback()
-                    config_util.unlock()
-                except:
-                    pass
-                return f"Failed to load/commit configuration: {e}"
+                    config_util.lock()
+                except Exception as e:
+                    return f"Failed to lock configuration: {e}"
                 
-    except ConnectError as ce:
-        return f"Connection error to {router_name}: {ce}"
-    except Exception as e:
-        return f"An error occurred: {e}"
+                try:
+                    # Load the configuration based on format
+                    if config_format.lower() == "set":
+                        config_util.load(config_text, format='set')
+                    elif config_format.lower() == "text":
+                        config_util.load(config_text, format='text')
+                    elif config_format.lower() == "xml":
+                        config_util.load(config_text, format='xml')
+                    else:
+                        config_util.unlock()
+                        return f"Error: Unsupported config format '{config_format}'. Use 'set', 'text', or 'xml'"
+                    
+                    # Check for differences
+                    diff = config_util.diff()
+                    if not diff:
+                        config_util.unlock()
+                        return "No configuration changes detected"
+                    
+                    # Commit the configuration
+                    config_util.commit(comment=commit_comment)
+                    config_util.unlock()
+                    
+                    return f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
+                    
+                except Exception as e:
+                    # If anything fails, rollback and unlock
+                    try:
+                        config_util.rollback()
+                        config_util.unlock()
+                    except:
+                        pass
+                    return f"Failed to load/commit configuration: {e}"
+                    
+        except ConnectError as ce:
+            return f"Connection error to {router_name}: {ce}"
+        except Exception as e:
+            return f"An error occurred: {e}"
+
+    return mcp
 
 def main():
     # Create the parser
@@ -284,12 +290,28 @@ def main():
         devices = {}
         raise
 
-    # Handle different transport types
+    # Set up signal handler for clean shutdown
+    def signal_handler(sig, frame):
+        print("\nShutting down MCP server...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Initialize FastMCP with appropriate settings based on transport
     if args.transport == 'stdio':
-        # For stdio transport, don't pass host/port
-        mcp.run(transport=args.transport)
+        # For stdio transport, create without host/port
+        mcp = create_mcp_server(name=JUNOS_MCP)
     else:
-        mcp.run(host=args.host, port=args.port, transport=args.transport)
+        # For streamable-http and sse, pass host/port as settings
+        mcp = create_mcp_server(name=JUNOS_MCP, host=args.host, port=args.port)
+    
+    # Run with the specified transport
+    try:
+        mcp.run(transport=args.transport)
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
+        sys.exit(0)
 
 if __name__ == '__main__':
     main()
