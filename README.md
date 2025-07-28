@@ -341,13 +341,17 @@ INFO - Streamable HTTP server started on http://127.0.0.1:30030
 curl -X POST "http://127.0.0.1:30030/mcp/" \
   -H "Authorization: Bearer jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8" \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-# Test without token (should fail)
+# Test without token (should fail with 401)
 curl -X POST "http://127.0.0.1:30030/mcp/" \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
+
+**Note:** MCP streamable-http requires the `Accept: application/json, text/event-stream` header.
 
 #### Docker with Authentication
 
