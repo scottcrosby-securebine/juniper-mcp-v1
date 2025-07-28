@@ -230,6 +230,181 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 
 **Note:** You can use VSCode's `Cmd+Shift+P` to configure MCP server.
 
+## 🔐 Authentication for MCP Server Access
+
+The Junos MCP server supports token-based authentication for secure client access when using streamable-http transport. This prevents unauthorized access to your network infrastructure.
+
+### Authentication Behavior
+
+- **stdio transport** (Claude Desktop): No authentication required - secure by design as it runs locally
+- **streamable-http transport** (VSCode, web clients): Token-based authentication available
+
+### Token Management
+
+The server includes a dedicated token management CLI tool: `jmcp_token_manager.py`
+
+#### Generate a New Token
+
+```bash
+# Basic token generation
+python jmcp_token_manager.py generate --id "vscode-dev"
+
+# With description
+python jmcp_token_manager.py generate --id "vscode-dev" --description "VSCode development environment"
+
+# Example output:
+Generated new token:
+  ID: vscode-dev  
+  Token: jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8
+  Description: VSCode development environment
+
+Save this token securely - it won't be shown again!
+```
+
+#### List All Tokens
+
+```bash
+python jmcp_token_manager.py list
+
+# Example output:
+ID                   Description                              Created                  
+-------------------------------------------------------------------------------------
+vscode-dev          VSCode development environment           2025-01-28T10:30:00Z     
+prod-client         Production client access                 2025-01-28T09:15:00Z     
+```
+
+#### Show Token Value (Recovery)
+
+```bash
+python jmcp_token_manager.py show --id "vscode-dev"
+
+# Example output:
+Token ID: vscode-dev
+Token: jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8
+Description: VSCode development environment
+Created: 2025-01-28T10:30:00Z
+```
+
+#### Revoke a Token  
+
+```bash
+python jmcp_token_manager.py revoke --id "vscode-dev"
+
+# Example output:
+Token 'vscode-dev' has been revoked
+```
+
+### Server Authentication Status
+
+The server automatically detects and enables authentication based on the presence of tokens:
+
+**With tokens configured:**
+```bash
+$ python jmcp.py -f devices.json -t streamable-http
+INFO - Token-based authentication enabled
+INFO - Clients must send 'Authorization: Bearer <token>' header  
+INFO - Use jmcp_token_manager.py to manage tokens
+INFO - Streamable HTTP server started on http://127.0.0.1:30030
+```
+
+**Without tokens configured:**
+```bash
+$ python jmcp.py -f devices.json -t streamable-http  
+WARNING - No .tokens file found - server is open to all clients
+INFO - Create tokens using: python jmcp_token_manager.py generate --id <token-id>
+INFO - Streamable HTTP server started on http://127.0.0.1:30030
+```
+
+### Client Configuration with Authentication
+
+#### VSCode Configuration with Token
+
+```json
+{
+    "mcp": {
+        "servers": {
+            "my-junos-mcp-server": {
+                "url": "http://127.0.0.1:30030/mcp/",
+                "headers": {
+                    "Authorization": "Bearer jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8"
+                }
+            }
+        }
+    }
+}
+```
+
+#### Testing with curl
+
+```bash
+# Test authentication with valid token
+curl -X POST "http://127.0.0.1:30030/mcp/" \
+  -H "Authorization: Bearer jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# Test without token (should fail)
+curl -X POST "http://127.0.0.1:30030/mcp/" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+#### Docker with Authentication
+
+When using Docker, mount the `.tokens` file to enable authentication:
+
+```bash
+# Generate token first (outside container)
+python jmcp_token_manager.py generate --id "docker-client"
+
+# Run container with token file mounted
+docker run --rm -it \
+  -v /path/to/devices.json:/app/config/devices.json \
+  -v /path/to/.tokens:/app/.tokens \
+  -p 30030:30030 \
+  junos-mcp-server:latest \
+  python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+```
+
+### Security Best Practices
+
+1. **Token Security**:
+   - Store tokens securely (password managers, environment variables)
+   - Use descriptive token IDs for easy management
+   - Regularly rotate tokens by revoking old ones and generating new ones
+   - Never commit tokens to version control
+
+2. **Access Control**:
+   - Generate separate tokens for different clients/environments
+   - Revoke tokens immediately when no longer needed
+   - Monitor server logs for unauthorized access attempts
+
+3. **Network Security**:
+   - Run streamable-http server behind reverse proxy with HTTPS in production
+   - Use firewall rules to restrict access to MCP server port
+   - Consider VPN access for remote clients
+
+### Token File Format
+
+The `.tokens` file stores tokens in JSON format:
+
+```json
+{
+  "vscode-dev": {
+    "token": "jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8",
+    "description": "VSCode development environment",
+    "created": "2025-01-28T10:30:00Z"
+  },
+  "prod-client": {
+    "token": "jmcp_x9y8z7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2",
+    "description": "Production client access", 
+    "created": "2025-01-28T09:15:00Z"
+  }
+}
+```
+
+**Important**: Keep this file secure and don't commit it to version control.
+
 ### Using MCP server with Juniper Cloud-Native Router (JCNR)
 
 JCNR is a cloud native router that runs on various cloud environments. One can use this MCP server with JCNR as well by following the steps given below. Please refer to JCNR documentation for more details on configuration.
