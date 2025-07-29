@@ -162,161 +162,191 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def handle_execute_junos_command(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for execute_junos_command tool"""
+    router_name = arguments.get("router_name", "")
+    command = arguments.get("command", "")
+    timeout = arguments.get("timeout", 360)
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Executing command {command} on router {router_name} with timeout {timeout}s")
+        result = _run_junos_cli_command(router_name, command, timeout)
+    
+    return [types.TextContent(type="text", text=result)]
+
+
+async def handle_get_junos_config(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for get_junos_config tool"""
+    router_name = arguments.get("router_name", "")
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Getting configuration from router {router_name}")
+        result = _run_junos_cli_command(router_name, "show configuration | display inheritance no-comments | no-more")
+    
+    return [types.TextContent(type="text", text=result)]
+
+
+async def handle_junos_config_diff(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for junos_config_diff tool"""
+    router_name = arguments.get("router_name", "")
+    version = arguments.get("version", 1)
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Getting configuration diff from router {router_name} for version {version}")
+        result = _run_junos_cli_command(router_name, f"show configuration | compare rollback {version}")
+    
+    return [types.TextContent(type="text", text=result)]
+
+
+async def handle_gather_device_facts(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for gather_device_facts tool"""
+    router_name = arguments.get("router_name", "")
+    timeout = arguments.get("timeout", 360)
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Getting facts from router {router_name} with timeout {timeout}s")
+        device_info = devices[router_name]
+        try:
+            connect_params = prepare_connection_params(device_info, router_name)
+            connect_params['timeout'] = timeout
+        except ValueError as ve:
+            result = f"Error: {ve}"
+        else:
+            try:
+                with Device(**connect_params) as junos_device:
+                    facts = junos_device.facts
+                    # Convert _FactCache to a regular dict
+                    facts_dict = dict(facts)
+                    
+                    # Custom JSON encoder to handle version_info and other complex objects
+                    def json_serializer(obj):
+                        if hasattr(obj, '_asdict'):  # Named tuples like version_info
+                            return obj._asdict()
+                        elif hasattr(obj, '__dict__'):  # Objects with __dict__
+                            return obj.__dict__
+                        else:
+                            return str(obj)
+                    
+                    result = json.dumps(facts_dict, indent=2, default=json_serializer)
+            except ConnectError as ce:
+                result = f"Connection error to {router_name}: {ce}"
+            except Exception as e:
+                result = f"An error occurred: {e}"
+    
+    return [types.TextContent(type="text", text=result)]
+
+
+async def handle_get_router_list(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for get_router_list tool"""
+    log.debug("Getting list of routers")
+    routers = list(devices.keys())
+    result = ', '.join(routers)
+    return [types.TextContent(type="text", text=result)]
+
+
+async def handle_load_and_commit_config(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for load_and_commit_config tool"""
+    router_name = arguments.get("router_name", "")
+    config_text = arguments.get("config_text", "")
+    config_format = arguments.get("config_format", "set")
+    commit_comment = arguments.get("commit_comment", "Configuration loaded via MCP")
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Loading and committing config on router {router_name} with format {config_format}")
+        device_info = devices[router_name]
+        
+        try:
+            connect_params = prepare_connection_params(device_info, router_name)
+        except ValueError as ve:
+            result = f"Error: {ve}"
+        else:
+            try:
+                with Device(**connect_params) as junos_device:
+                    # Initialize configuration utility
+                    config_util = Config(junos_device)
+                    
+                    # Lock the configuration
+                    try:
+                        config_util.lock()
+                    except Exception as e:
+                        result = f"Failed to lock configuration: {e}"
+                    else:
+                        try:
+                            # Load the configuration based on format
+                            if config_format.lower() == "set":
+                                config_util.load(config_text, format='set')
+                            elif config_format.lower() == "text":
+                                config_util.load(config_text, format='text')
+                            elif config_format.lower() == "xml":
+                                config_util.load(config_text, format='xml')
+                            else:
+                                config_util.unlock()
+                                result = f"Error: Unsupported config format '{config_format}'. Use 'set', 'text', or 'xml'"
+                            
+                            if 'result' not in locals():
+                                # Check for differences
+                                diff = config_util.diff()
+                                if not diff:
+                                    config_util.unlock()
+                                    result = "No configuration changes detected"
+                                else:
+                                    # Commit the configuration
+                                    config_util.commit(comment=commit_comment)
+                                    config_util.unlock()
+                                    result = f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
+                                    
+                        except Exception as e:
+                            # If anything fails, rollback and unlock
+                            try:
+                                config_util.rollback()
+                                config_util.unlock()
+                            except:
+                                pass
+                            result = f"Failed to load/commit configuration: {e}"
+                            
+            except ConnectError as ce:
+                result = f"Connection error to {router_name}: {ce}"
+            except Exception as e:
+                result = f"An error occurred: {e}"
+    
+    return [types.TextContent(type="text", text=result)]
+
+
+# Tool registry mapping tool names to their handler functions
+# To add a new tool:
+# 1. Create an async handler function: async def handle_my_new_tool(arguments: dict) -> list[types.ContentBlock]
+# 2. Add it to this registry: "my_new_tool": handle_my_new_tool
+# 3. Add the tool definition to list_tools() method
+TOOL_HANDLERS = {
+    "execute_junos_command": handle_execute_junos_command,
+    "get_junos_config": handle_get_junos_config,
+    "junos_config_diff": handle_junos_config_diff,
+    "gather_device_facts": handle_gather_device_facts,
+    "get_router_list": handle_get_router_list,
+    "load_and_commit_config": handle_load_and_commit_config,
+}
+
+
 def create_mcp_server() -> Server:
     """Create and configure the MCP server with all tools"""
     app = Server(JUNOS_MCP)
     
     @app.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[types.ContentBlock]:
-        """Handle tool calls"""
-        if name == "execute_junos_command":
-            router_name = arguments.get("router_name", "")
-            command = arguments.get("command", "")
-            timeout = arguments.get("timeout", 360)
-            
-            if router_name not in devices:
-                result = f"Router {router_name} not found in the device mapping."
-            else:
-                log.debug(f"Executing command {command} on router {router_name} with timeout {timeout}s")
-                result = _run_junos_cli_command(router_name, command, timeout)
-            
-            return [types.TextContent(type="text", text=result)]
-        
-        elif name == "get_junos_config":
-            router_name = arguments.get("router_name", "")
-            
-            if router_name not in devices:
-                result = f"Router {router_name} not found in the device mapping."
-            else:
-                log.debug(f"Getting configuration from router {router_name}")
-                result = _run_junos_cli_command(router_name, "show configuration | display inheritance no-comments | no-more")
-            
-            return [types.TextContent(type="text", text=result)]
-        
-        elif name == "junos_config_diff":
-            router_name = arguments.get("router_name", "")
-            version = arguments.get("version", 1)
-            
-            if router_name not in devices:
-                result = f"Router {router_name} not found in the device mapping."
-            else:
-                log.debug(f"Getting configuration diff from router {router_name} for version {version}")
-                result = _run_junos_cli_command(router_name, f"show configuration | compare rollback {version}")
-            
-            return [types.TextContent(type="text", text=result)]
-        
-        elif name == "gather_device_facts":
-            router_name = arguments.get("router_name", "")
-            timeout = arguments.get("timeout", 360)
-            
-            if router_name not in devices:
-                result = f"Router {router_name} not found in the device mapping."
-            else:
-                log.debug(f"Getting facts from router {router_name} with timeout {timeout}s")
-                device_info = devices[router_name]
-                try:
-                    connect_params = prepare_connection_params(device_info, router_name)
-                    connect_params['timeout'] = timeout
-                except ValueError as ve:
-                    result = f"Error: {ve}"
-                else:
-                    try:
-                        with Device(**connect_params) as junos_device:
-                            facts = junos_device.facts
-                            # Convert _FactCache to a regular dict
-                            facts_dict = dict(facts)
-                            
-                            # Custom JSON encoder to handle version_info and other complex objects
-                            def json_serializer(obj):
-                                if hasattr(obj, '_asdict'):  # Named tuples like version_info
-                                    return obj._asdict()
-                                elif hasattr(obj, '__dict__'):  # Objects with __dict__
-                                    return obj.__dict__
-                                else:
-                                    return str(obj)
-                            
-                            result = json.dumps(facts_dict, indent=2, default=json_serializer)
-                    except ConnectError as ce:
-                        result = f"Connection error to {router_name}: {ce}"
-                    except Exception as e:
-                        result = f"An error occurred: {e}"
-            
-            return [types.TextContent(type="text", text=result)]
-        
-        elif name == "get_router_list":
-            log.debug("Getting list of routers")
-            routers = list(devices.keys())
-            result = ', '.join(routers)
-            return [types.TextContent(type="text", text=result)]
-        
-        elif name == "load_and_commit_config":
-            router_name = arguments.get("router_name", "")
-            config_text = arguments.get("config_text", "")
-            config_format = arguments.get("config_format", "set")
-            commit_comment = arguments.get("commit_comment", "Configuration loaded via MCP")
-            
-            if router_name not in devices:
-                result = f"Router {router_name} not found in the device mapping."
-            else:
-                log.debug(f"Loading and committing config on router {router_name} with format {config_format}")
-                device_info = devices[router_name]
-                
-                try:
-                    connect_params = prepare_connection_params(device_info, router_name)
-                except ValueError as ve:
-                    result = f"Error: {ve}"
-                else:
-                    try:
-                        with Device(**connect_params) as junos_device:
-                            # Initialize configuration utility
-                            config_util = Config(junos_device)
-                            
-                            # Lock the configuration
-                            try:
-                                config_util.lock()
-                            except Exception as e:
-                                result = f"Failed to lock configuration: {e}"
-                            else:
-                                try:
-                                    # Load the configuration based on format
-                                    if config_format.lower() == "set":
-                                        config_util.load(config_text, format='set')
-                                    elif config_format.lower() == "text":
-                                        config_util.load(config_text, format='text')
-                                    elif config_format.lower() == "xml":
-                                        config_util.load(config_text, format='xml')
-                                    else:
-                                        config_util.unlock()
-                                        result = f"Error: Unsupported config format '{config_format}'. Use 'set', 'text', or 'xml'"
-                                    
-                                    if 'result' not in locals():
-                                        # Check for differences
-                                        diff = config_util.diff()
-                                        if not diff:
-                                            config_util.unlock()
-                                            result = "No configuration changes detected"
-                                        else:
-                                            # Commit the configuration
-                                            config_util.commit(comment=commit_comment)
-                                            config_util.unlock()
-                                            result = f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
-                                            
-                                except Exception as e:
-                                    # If anything fails, rollback and unlock
-                                    try:
-                                        config_util.rollback()
-                                        config_util.unlock()
-                                    except:
-                                        pass
-                                    result = f"Failed to load/commit configuration: {e}"
-                                    
-                    except ConnectError as ce:
-                        result = f"Connection error to {router_name}: {ce}"
-                    except Exception as e:
-                        result = f"An error occurred: {e}"
-            
-            return [types.TextContent(type="text", text=result)]
-        
+        """Handle tool calls using the tool registry"""
+        handler = TOOL_HANDLERS.get(name)
+        if handler:
+            return await handler(arguments)
         else:
             return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 

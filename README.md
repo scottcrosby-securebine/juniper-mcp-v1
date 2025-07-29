@@ -424,3 +424,203 @@ set system services ssh root-login allow
 set system root-authentication encrypted-password "$6$3vvMI$RNemhmu9izWXzO46msh38frIg4VoeFNJWJZugxgnU.NQso3OQ00QWOIZmzNePD.MWjDODxBBEYut/W7kfADdV." (or)
 set system root-authentication load-key-file <public key>
 ```
+
+## 🛠️ Developer Guide
+
+This section explains the architecture of the Junos MCP server and how to extend it with new tools.
+
+### Architecture Overview
+
+The Junos MCP server uses the Model Context Protocol (MCP) to enable LLMs to interact with Juniper network devices. The server architecture consists of:
+
+1. **MCP Server Core** (`jmcp.py`): Handles MCP protocol communication
+2. **Tool Handlers**: Individual functions that implement specific network operations
+3. **Tool Registry**: Maps tool names to their handler functions
+4. **Transport Layer**: Supports stdio (Claude Desktop) and streamable-http (VSCode)
+
+### How Tools Work
+
+Each tool in the MCP server follows this flow:
+
+```
+LLM Request → MCP Server → Tool Registry → Handler Function → PyEZ → Junos Device
+                                                    ↓
+LLM Response ← MCP Server ← Handler Response ← PyEZ Response ←
+```
+
+### Adding a New Tool
+
+Adding a new tool is a simple 3-step process:
+
+#### Step 1: Create a Handler Function
+
+Create an async handler function in `jmcp.py` (before the `TOOL_HANDLERS` dictionary):
+
+```python
+async def handle_my_new_tool(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for my_new_tool - describe what it does"""
+    # Extract arguments
+    router_name = arguments.get("router_name", "")
+    my_param = arguments.get("my_param", "default_value")
+    
+    # Validate router exists
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        # Your tool logic here
+        log.debug(f"Executing my_new_tool on router {router_name}")
+        result = _run_junos_cli_command(router_name, f"show {my_param}")
+    
+    return [types.TextContent(type="text", text=result)]
+```
+
+#### Step 2: Register the Handler
+
+Add your handler to the `TOOL_HANDLERS` dictionary (around line 330):
+
+```python
+TOOL_HANDLERS = {
+    "execute_junos_command": handle_execute_junos_command,
+    "get_junos_config": handle_get_junos_config,
+    "junos_config_diff": handle_junos_config_diff,
+    "gather_device_facts": handle_gather_device_facts,
+    "get_router_list": handle_get_router_list,
+    "load_and_commit_config": handle_load_and_commit_config,
+    "my_new_tool": handle_my_new_tool,  # Add your tool here
+}
+```
+
+#### Step 3: Define Tool Metadata
+
+Add the tool definition to the `list_tools()` method (around line 410):
+
+```python
+types.Tool(
+    name="my_new_tool",
+    description="Brief description of what your tool does",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "router_name": {"type": "string", "description": "The name of the router"},
+            "my_param": {"type": "string", "description": "Description of parameter"}
+        },
+        "required": ["router_name"]  # List required parameters
+    }
+)
+```
+
+### Example: Creating a BGP Neighbors Tool
+
+Here's a complete example of adding a tool to show BGP neighbors:
+
+```python
+# Step 1: Handler function
+async def handle_show_bgp_neighbors(arguments: dict) -> list[types.ContentBlock]:
+    """Handler for show_bgp_neighbors tool"""
+    router_name = arguments.get("router_name", "")
+    neighbor_address = arguments.get("neighbor_address", "")
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        log.debug(f"Getting BGP neighbors from router {router_name}")
+        if neighbor_address:
+            cmd = f"show bgp neighbor {neighbor_address}"
+        else:
+            cmd = "show bgp summary"
+        result = _run_junos_cli_command(router_name, cmd)
+    
+    return [types.TextContent(type="text", text=result)]
+
+# Step 2: Add to TOOL_HANDLERS
+TOOL_HANDLERS = {
+    # ... existing tools ...
+    "show_bgp_neighbors": handle_show_bgp_neighbors,
+}
+
+# Step 3: Add to list_tools()
+types.Tool(
+    name="show_bgp_neighbors",
+    description="Show BGP neighbor information",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "router_name": {"type": "string", "description": "The name of the router"},
+            "neighbor_address": {"type": "string", "description": "Optional: specific neighbor IP"}
+        },
+        "required": ["router_name"]
+    }
+)
+```
+
+### Best Practices for Tool Development
+
+1. **Error Handling**: Always handle connection errors and invalid inputs gracefully
+2. **Logging**: Use the global `log` logger for debugging
+3. **Validation**: Check if router exists before attempting operations
+4. **Documentation**: Write clear descriptions for tools and parameters
+5. **Timeouts**: Support configurable timeouts for long-running operations
+6. **Return Format**: Always return `list[types.ContentBlock]` with text content
+
+### Using PyEZ for Advanced Operations
+
+For operations beyond CLI commands, use PyEZ directly:
+
+```python
+from jnpr.junos import Device
+from jnpr.junos.utils.config import Config
+
+# Example: Using PyEZ tables
+async def handle_get_interfaces(arguments: dict) -> list[types.ContentBlock]:
+    router_name = arguments.get("router_name", "")
+    
+    if router_name not in devices:
+        result = f"Router {router_name} not found in the device mapping."
+    else:
+        device_info = devices[router_name]
+        try:
+            connect_params = prepare_connection_params(device_info, router_name)
+            with Device(**connect_params) as junos_device:
+                # Use PyEZ tables or other utilities
+                interfaces = junos_device.rpc.get_interface_information()
+                # Process interfaces...
+                result = "Interface information..."
+        except Exception as e:
+            result = f"Error: {e}"
+    
+    return [types.TextContent(type="text", text=result)]
+```
+
+### Testing Your Tools
+
+1. **Unit Testing**: Test handler functions with mock arguments
+2. **Integration Testing**: Test with actual Junos devices or vSRX
+3. **Error Cases**: Test with invalid routers, network failures, etc.
+
+Example test:
+```python
+# Test the handler directly
+result = await handle_my_new_tool({
+    "router_name": "router-1",
+    "my_param": "test"
+})
+print(result[0].text)
+```
+
+### Debugging Tips
+
+1. Enable debug logging to see detailed execution:
+   ```python
+   logging.basicConfig(level=logging.DEBUG)
+   ```
+
+2. Use the stdio transport for easier debugging:
+   ```bash
+   python jmcp.py -f devices.json -t stdio
+   ```
+
+3. Test individual commands manually:
+   ```python
+   result = _run_junos_cli_command("router-1", "show version")
+   print(result)
+   ```
