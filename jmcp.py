@@ -17,13 +17,29 @@
 #  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
 
+from __future__ import annotations as _annotations
+
 import argparse
+from datetime import datetime
 import logging
 import os
 import json
 import sys
 import signal
 from typing import Any, Sequence
+
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+
+from typing import Dict, Any, Generic, Literal
+from pydantic import BaseModel, Field
+from pydantic.networks import AnyUrl
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from mcp.server.elicitation import (
+    AcceptedElicitation,
+    DeclinedElicitation,
+    CancelledElicitation,
+)
 
 import anyio
 import mcp.types as types
@@ -35,6 +51,28 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from mcp.server.session import ServerSession, ServerSessionT
+from mcp.server.elicitation import ElicitationResult, ElicitSchemaModelT, elicit_with_validation
+
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+from mcp.server.lowlevel.server import LifespanResultT
+from mcp.server.lowlevel.server import Server as MCPServer
+from mcp.server.lowlevel.server import lifespan as default_lifespan
+
+from mcp.shared.context import LifespanContextT, RequestContext, RequestT
+from mcp.types import (
+    AnyFunction,
+    ContentBlock,
+    GetPromptResult,
+    ToolAnnotations,
+)
+from mcp.types import Prompt as MCPPrompt
+from mcp.types import PromptArgument as MCPPromptArgument
+from mcp.types import Resource as MCPResource
+from mcp.types import ResourceTemplate as MCPResourceTemplate
+from mcp.types import Tool as MCPTool
+
 
 from jnpr.junos import Device
 from jnpr.junos.exception import ConnectError
@@ -50,6 +88,490 @@ devices = {}
 # Junos MCP Server
 JUNOS_MCP = 'jmcp-server'
 
+
+class Context(BaseModel, Generic[ServerSessionT, LifespanContextT, RequestT]):
+    """Context object providing access to MCP capabilities.
+
+    This provides a cleaner interface to MCP's RequestContext functionality.
+    It gets injected into tool and resource functions that request it via type hints.
+
+    To use context in a tool function, add a parameter with the Context type annotation:
+
+    ```python
+    @server.tool()
+    def my_tool(x: int, ctx: Context) -> str:
+        # Log messages to the client
+        ctx.info(f"Processing {x}")
+        ctx.debug("Debug info")
+        ctx.warning("Warning message")
+        ctx.error("Error message")
+
+        # Report progress
+        ctx.report_progress(50, 100)
+
+        # Access resources
+        data = ctx.read_resource("resource://data")
+
+        # Get request info
+        request_id = ctx.request_id
+        client_id = ctx.client_id
+
+        return str(x)
+    ```
+
+    The context parameter name can be anything as long as it's annotated with Context.
+    The context is optional - tools that don't need it can omit the parameter.
+    """
+
+    _request_context: RequestContext[ServerSessionT, LifespanContextT, RequestT] | None
+    _fastmcp: Server | None
+
+    def __init__(
+        self,
+        *,
+        request_context: (RequestContext[ServerSessionT, LifespanContextT, RequestT] | None) = None,
+        fastmcp: Server | None = None,
+        **kwargs: Any,
+    ):
+        super().__init__(**kwargs)
+        self._request_context = request_context
+        self._fastmcp = fastmcp
+
+    @property
+    def fastmcp(self) -> Server:
+        """Access to the FastMCP server."""
+        if self._fastmcp is None:
+            raise ValueError("Context is not available outside of a request")
+        return self._fastmcp
+
+    @property
+    def request_context(
+        self,
+    ) -> RequestContext[ServerSessionT, LifespanContextT, RequestT]:
+        """Access to the underlying request context."""
+        if self._request_context is None:
+            raise ValueError("Context is not available outside of a request")
+        return self._request_context
+
+    async def report_progress(self, progress: float, total: float | None = None, message: str | None = None) -> None:
+        """Report progress for the current operation.
+
+        Args:
+            progress: Current progress value e.g. 24
+            total: Optional total value e.g. 100
+            message: Optional message e.g. Starting render...
+        """
+        progress_token = self.request_context.meta.progressToken if self.request_context.meta else None
+
+        if progress_token is None:
+            return
+
+        await self.request_context.session.send_progress_notification(
+            progress_token=progress_token,
+            progress=progress,
+            total=total,
+            message=message,
+        )
+
+    async def read_resource(self, uri: str | AnyUrl) -> Iterable[ReadResourceContents]:
+        """Read a resource by URI.
+
+        Args:
+            uri: Resource URI to read
+
+        Returns:
+            The resource content as either text or bytes
+        """
+        assert self._fastmcp is not None, "Context is not available outside of a request"
+        return await self._fastmcp.read_resource(uri)
+
+    async def elicit(
+        self,
+        message: str,
+        schema: type[ElicitSchemaModelT],
+    ) -> ElicitationResult[ElicitSchemaModelT]:
+        """Elicit information from the client/user.
+
+        This method can be used to interactively ask for additional information from the
+        client within a tool's execution. The client might display the message to the
+        user and collect a response according to the provided schema. Or in case a
+        client is an agent, it might decide how to handle the elicitation -- either by asking
+        the user or automatically generating a response.
+
+        Args:
+            schema: A Pydantic model class defining the expected response structure, according to the specification,
+                    only primive types are allowed.
+            message: Optional message to present to the user. If not provided, will use
+                    a default message based on the schema
+
+        Returns:
+            An ElicitationResult containing the action taken and the data if accepted
+
+        Note:
+            Check the result.action to determine if the user accepted, declined, or cancelled.
+            The result.data will only be populated if action is "accept" and validation succeeded.
+        """
+
+        log.info(f"Calling elicit_with_validation with related_request_id: {self.request_id}")
+        return await elicit_with_validation(
+            session=self.request_context.session, message=message, schema=schema, related_request_id=self.request_id
+        )
+
+    async def log(
+        self,
+        level: Literal["debug", "info", "warning", "error"],
+        message: str,
+        *,
+        logger_name: str | None = None,
+    ) -> None:
+        """Send a log message to the client.
+
+        Args:
+            level: Log level (debug, info, warning, error)
+            message: Log message
+            logger_name: Optional logger name
+            **extra: Additional structured data to include
+        """
+        await self.request_context.session.send_log_message(
+            level=level,
+            data=message,
+            logger=logger_name,
+            related_request_id=self.request_id,
+        )
+
+    @property
+    def client_id(self) -> str | None:
+        """Get the client ID if available."""
+        return getattr(self.request_context.meta, "client_id", None) if self.request_context.meta else None
+
+    @property
+    def request_id(self) -> str:
+        """Get the unique ID for this request."""
+        return str(self.request_context.request_id)
+
+    @property
+    def session(self):
+        """Access to the underlying session for advanced usage."""
+        return self.request_context.session
+
+    # Convenience methods for common log levels
+    async def debug(self, message: str, **extra: Any) -> None:
+        """Send a debug log message."""
+        await self.log("debug", message, **extra)
+
+    async def info(self, message: str, **extra: Any) -> None:
+        """Send an info log message."""
+        await self.log("info", message, **extra)
+
+    async def warning(self, message: str, **extra: Any) -> None:
+        """Send a warning log message."""
+        await self.log("warning", message, **extra)
+
+    async def error(self, message: str, **extra: Any) -> None:
+        """Send an error log message."""
+        await self.log("error", message, **extra)
+
+
+class ElicitationSchema:
+    """Schema definitions for different elicitation types."""
+    # Device management schemas
+    class GetDeviceName(BaseModel):
+        name: str = Field(
+            description="Enter the device name (e.g., router1-east)",
+            min_length=1,
+            max_length=50
+        )
+
+    class GetDeviceIP(BaseModel):
+        ip: str = Field(
+            description="Enter the device IP address (e.g., 192.168.1.1)",
+            pattern=r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
+        )
+
+    class GetDevicePort(BaseModel):
+        port: int = Field(
+            description="Enter the SSH port (default: 22)",
+            ge=1,
+            le=65535,
+            default=22
+        )
+
+    class GetDeviceUsername(BaseModel):
+        username: str = Field(
+            description="Enter the username for device authentication",
+            min_length=1
+        )
+    
+    class GetSSHKeyPath(BaseModel):
+        ssh_key_path: str = Field(
+            description="Enter the path to the SSH private key file on the MCP server (e.g., /home/user/.ssh/id_rsa)",
+            min_length=1
+        )
+        
+    class ConfirmDeviceAdd(BaseModel):
+        confirm: bool = Field(description="Confirm adding this device")
+        test_connection: bool = Field(
+            default=False, 
+            description="Test connection to device before adding"
+        )
+
+async def elicit_field_value(
+    ctx: Context,
+    message: str,
+    schema_class: type[BaseModel],
+    field_name: str | None
+) -> str | int | Dict[str, Any] | None:
+    """Generic elicitation handler with validation and error handling."""
+
+    try:
+        log.info(f"Calling ctx.elicit with schema: {schema_class.__name__}")
+        
+        # Add timeout to elicitation
+        import asyncio
+        try:
+            result = await asyncio.wait_for(
+                ctx.elicit(message=message, schema=schema_class),
+                timeout=300.0  # 300 second timeout (5 minutes)
+            )
+            log.info(f"Elicit returned result of type: {type(result)}")
+        except asyncio.TimeoutError:
+            log.error("Elicitation timed out after 300 seconds")
+            return None
+
+        match result:
+            case AcceptedElicitation(data=data):
+                # Debug: print what we received
+                log.info(f"Elicitation accepted. Data type: {type(data)}, value: {data}")
+
+                # If field_name is None, return the entire data object
+                if field_name is None:
+                    log.info("Returning full data object")
+                    return data
+                # Otherwise return the specific field
+                if hasattr(data, field_name):
+                    field_value = getattr(data, field_name)
+                    log.info(f"Returning field '{field_name}' with value: {field_value}")
+                    return field_value
+                log.warning(f"Field '{field_name}' not found in data object")
+                return None
+            case DeclinedElicitation():
+                log.info("Elicitation was declined")
+                return None
+            case CancelledElicitation():
+                log.info("Elicitation was cancelled")
+                return None
+    except (anyio.ClosedResourceError, ConnectionError) as e:
+        print(f"Client disconnected during elicitation: {e}")
+        return None
+    except Exception as e:
+        log.error(f"Elicitation error: {e}")
+        print(f"Elicitation error: {e}")
+        return None
+
+async def handle_add_device(arguments: dict, context: Context) -> list[types.ContentBlock]:
+    """Add a new Junos device with elicitation for missing information."""
+    
+    # Extract any provided arguments (though we'll elicit missing ones)
+    device_name = arguments.get("device_name", "")
+    device_ip = arguments.get("device_ip", "")
+    device_port = arguments.get("device_port", 0)
+    username = arguments.get("username", "")
+    ssh_key_path = arguments.get("ssh_key_path", "")
+    
+    ctx = context
+    
+    log.info(f"Starting add_device with name='{device_name}', ip='{device_ip}'")
+    
+    try:
+        # Step 1: Get device name
+        while not device_name:
+            log.info("No device name provided, asking user")
+            
+            name_result = await elicit_field_value(
+                ctx, "Please enter the device name:", 
+                ElicitationSchema.GetDeviceName, "name"
+            )
+            
+            if name_result is None:
+                return [types.TextContent(type="text", text="❌ Device name input cancelled.")]
+            
+            device_name = str(name_result).strip()
+            log.info(f"Received device name: '{device_name}'")
+            
+            # Check if device already exists
+            if device_name in devices:
+                log.warning(f"Device '{device_name}' already exists")
+                await ctx.warning(f"Device '{device_name}' already exists!")
+                
+                # Ask for a different name
+                device_name = ""
+                continue
+        
+        # Step 2: Get device IP
+        while not device_ip:
+            log.info("No device IP provided, asking user")
+            
+            ip_result = await elicit_field_value(
+                ctx, f"Please enter the IP address for device '{device_name}':",
+                ElicitationSchema.GetDeviceIP, "ip"
+            )
+            
+            if ip_result is None:
+                return [types.TextContent(type="text", text="❌ Device IP input cancelled.")]
+            
+            device_ip = str(ip_result).strip()
+            log.info(f"Received device IP: '{device_ip}'")
+        
+        # Step 3: Get device port (with default)
+        while not device_port or device_port <= 0:
+            log.info("No valid device port provided, asking user")
+            
+            port_result = await elicit_field_value(
+                ctx, f"Please enter the SSH port for device '{device_name}' (default: 22):",
+                ElicitationSchema.GetDevicePort, "port"
+            )
+            
+            if port_result is None:
+                return [types.TextContent(type="text", text="❌ Device port input cancelled.")]
+            
+            device_port = int(port_result)
+            log.info(f"Received device port: {device_port}")
+        
+        # Step 4: Get username
+        while not username:
+            log.info("Username not provided, asking user")
+            
+            creds_result = await elicit_field_value(
+                ctx, f"Please enter the username for device '{device_name}':",
+                ElicitationSchema.GetDeviceUsername, "username"
+            )
+            
+            if creds_result is None:
+                return [types.TextContent(type="text", text="❌ Username input cancelled.")]
+            
+            username = str(creds_result).strip()
+            log.info(f"Received username: '{username}'")
+        
+        # Step 5: Get SSH key path
+        while not ssh_key_path:
+            log.info("SSH key path not provided, asking user")
+            
+            ssh_key_result = await elicit_field_value(
+                ctx, f"Please enter the SSH private key file path for device '{device_name}':",
+                ElicitationSchema.GetSSHKeyPath, "ssh_key_path"
+            )
+            
+            if ssh_key_result is None:
+                return [types.TextContent(type="text", text="❌ SSH key path input cancelled.")]
+            
+            ssh_key_path = str(ssh_key_result).strip()
+            
+            # Validate SSH key file exists
+            if not os.path.exists(ssh_key_path):
+                await ctx.warning(f"SSH key file '{ssh_key_path}' not found. Please enter a valid path.")
+                ssh_key_path = ""
+                continue
+            
+            # Check if file is readable
+            if not os.access(ssh_key_path, os.R_OK):
+                await ctx.warning(f"SSH key file '{ssh_key_path}' is not readable. Please check permissions.")
+                ssh_key_path = ""
+                continue
+            
+            log.info(f"Received SSH key path: '{ssh_key_path}'")
+        
+        # Step 6: Show summary and ask for confirmation
+        device_summary = f"""Device Details:
+• Name: {device_name}
+• IP: {device_ip}
+• Port: {device_port}
+• Username: {username}
+• SSH Key: {ssh_key_path}"""
+        
+        confirmation = await elicit_field_value(
+            ctx,
+            f"Please confirm adding this device:\n\n{device_summary}",
+            ElicitationSchema.ConfirmDeviceAdd,
+            None
+        )
+        
+        if confirmation is None or not confirmation.confirm:
+            return [types.TextContent(type="text", text="❌ Device addition cancelled.")]
+        
+        # Step 7: Optional connection test
+        if confirmation.test_connection:
+            await ctx.info(f"Testing connection to {device_name}...")
+            
+            # Create device configuration for testing
+            test_device_info = {
+                "ip": device_ip,
+                "port": device_port,
+                "username": username,
+                "auth": {
+                    "type": "ssh_key",
+                    "private_key_path": ssh_key_path
+                }
+            }
+            
+            test_device = None
+            try:
+                connect_params = prepare_connection_params(test_device_info, device_name)
+                
+                # Create device instance for testing
+                test_device = Device(**connect_params)
+                test_device.open()
+                test_device.timeout = 10
+                
+                # Just test the connection, don't run any commands
+                await ctx.info(f"✅ Connection test successful!")
+                    
+            except Exception as e:
+                log.error(f"Connection test failed for {device_name}: {e}")
+                return [types.TextContent(type="text", text=f"❌ Connection test failed: {str(e)}\nDevice not added.")]
+            finally:
+                # Ensure test connection is properly closed
+                if test_device is not None:
+                    try:
+                        if test_device.connected:
+                            log.debug(f"Explicitly closing test connection to {device_name}")
+                            test_device.close()
+                    except Exception as close_error:
+                        log.warning(f"Error while closing test connection to {device_name}: {close_error}")
+                        # Force cleanup of the underlying transport
+                        try:
+                            if hasattr(test_device, '_conn') and test_device._conn:
+                                test_device._conn.close()
+                        except Exception as transport_error:
+                            log.warning(f"Error while closing test transport to {device_name}: {transport_error}")
+        
+        # Step 8: Add device to global devices dictionary
+        devices[device_name] = {
+            "ip": device_ip,
+            "port": device_port,
+            "username": username,
+            "auth": {
+                "type": "ssh_key",
+                "private_key_path": ssh_key_path
+            }
+        }
+        
+        log.info(f"Successfully added device '{device_name}' to devices dictionary")
+        await ctx.info(f"Device '{device_name}' added successfully!")
+        
+        result_message = f"""✅ Device '{device_name}' added successfully!
+
+Details:
+• IP: {device_ip}
+• Port: {device_port}
+• Username: {username}
+
+The device is now available for use with all Junos MCP tools."""
+        
+        return [types.TextContent(type="text", text=result_message)]
+        
+    except Exception as e:
+        log.error(f"Unexpected error in add_device: {e}")
+        return [types.TextContent(type="text", text=f"❌ Failed to add device: {str(e)}")]
 
 
 def prepare_connection_params(device_info: dict, router_name: str) -> dict:
@@ -100,8 +622,7 @@ def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -
     except ValueError as ve:
         return f"Error: {ve}"
     try:
-        with Device(**connect_params) as junos_device:
-            junos_device.open()
+        with Device(**connect_params) as junos_device:            
             junos_device.timeout = timeout
             op = junos_device.cli(command, warning=False)
             return op
@@ -109,7 +630,6 @@ def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -
         return f"Connection error to {router_name}: {ce}"
     except Exception as e:
         return f"An error occurred: {e}"
-
 
 def validate_token_from_file(token: str) -> bool:
     """Validate if a token exists in the .tokens file"""
@@ -137,12 +657,30 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         self.auth_enabled = auth_enabled
     
     async def dispatch(self, request: Request, call_next):
+        # Log all incoming requests during elicitation debugging
+        log.info(f"Incoming request: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+        
+        # Try to read request body for debugging
+        if request.method == "POST":
+            try:
+                body = await request.body()
+                if body:
+                    import json
+                    try:
+                        parsed_body = json.loads(body.decode())
+                        log.info(f"Request body: {parsed_body}")
+                    except:
+                        log.info(f"Raw request body: {body[:200]}...")
+            except Exception as e:
+                log.warning(f"Could not read request body: {e}")
+        
         # Skip auth if disabled (for stdio transport)
         if not self.auth_enabled:
             return await call_next(request)
         
         auth_header = request.headers.get("authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
+            log.warning(f"Missing or invalid auth header for {request.method} {request.url.path}")
             return JSONResponse(
                 {"error": "Missing or invalid Authorization header"}, 
                 status_code=401
@@ -162,7 +700,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def handle_execute_junos_command(arguments: dict) -> list[types.ContentBlock]:
+async def handle_execute_junos_command(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for execute_junos_command tool"""
     router_name = arguments.get("router_name", "")
     command = arguments.get("command", "")
@@ -177,7 +715,7 @@ async def handle_execute_junos_command(arguments: dict) -> list[types.ContentBlo
     return [types.TextContent(type="text", text=result)]
 
 
-async def handle_get_junos_config(arguments: dict) -> list[types.ContentBlock]:
+async def handle_get_junos_config(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for get_junos_config tool"""
     router_name = arguments.get("router_name", "")
     
@@ -190,7 +728,7 @@ async def handle_get_junos_config(arguments: dict) -> list[types.ContentBlock]:
     return [types.TextContent(type="text", text=result)]
 
 
-async def handle_junos_config_diff(arguments: dict) -> list[types.ContentBlock]:
+async def handle_junos_config_diff(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for junos_config_diff tool"""
     router_name = arguments.get("router_name", "")
     version = arguments.get("version", 1)
@@ -204,7 +742,7 @@ async def handle_junos_config_diff(arguments: dict) -> list[types.ContentBlock]:
     return [types.TextContent(type="text", text=result)]
 
 
-async def handle_gather_device_facts(arguments: dict) -> list[types.ContentBlock]:
+async def handle_gather_device_facts(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for gather_device_facts tool"""
     router_name = arguments.get("router_name", "")
     timeout = arguments.get("timeout", 360)
@@ -244,7 +782,7 @@ async def handle_gather_device_facts(arguments: dict) -> list[types.ContentBlock
     return [types.TextContent(type="text", text=result)]
 
 
-async def handle_get_router_list(arguments: dict) -> list[types.ContentBlock]:
+async def handle_get_router_list(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for get_router_list tool"""
     log.debug("Getting list of routers")
     routers = list(devices.keys())
@@ -252,7 +790,7 @@ async def handle_get_router_list(arguments: dict) -> list[types.ContentBlock]:
     return [types.TextContent(type="text", text=result)]
 
 
-async def handle_load_and_commit_config(arguments: dict) -> list[types.ContentBlock]:
+async def handle_load_and_commit_config(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for load_and_commit_config tool"""
     router_name = arguments.get("router_name", "")
     config_text = arguments.get("config_text", "")
@@ -334,6 +872,7 @@ TOOL_HANDLERS = {
     "gather_device_facts": handle_gather_device_facts,
     "get_router_list": handle_get_router_list,
     "load_and_commit_config": handle_load_and_commit_config,
+    "add_device": handle_add_device     # Dynamic device management
 }
 
 
@@ -346,7 +885,17 @@ def create_mcp_server() -> Server:
         """Handle tool calls using the tool registry"""
         handler = TOOL_HANDLERS.get(name)
         if handler:
-            return await handler(arguments)
+            try:
+                request_context = app.request_context
+                log.info(f"Got request_context: {type(request_context)}, session: {type(request_context.session) if request_context else None}")
+            except LookupError as e:
+                log.warning(f"LookupError getting request_context: {e}")
+                request_context = None
+            
+            context = Context(request_context=request_context, fastmcp=app)
+            log.info(f"Created context with request_context: {request_context is not None}")
+            
+            return await handler(arguments, context=context)
         else:
             return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -433,6 +982,21 @@ def create_mcp_server() -> Server:
                         "commit_comment": {"type": "string", "description": "Commit comment", "default": "Configuration loaded via MCP"}
                     },
                     "required": ["router_name", "config_text"]
+                }
+            ),
+            types.Tool(
+                name="add_device",
+                description="Add a new Junos device with interactive elicitation for device details",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "device_name": {"type": "string", "description": "Device name/identifier", "default": ""},
+                        "device_ip": {"type": "string", "description": "Device IP address", "default": ""},
+                        "device_port": {"type": "integer", "description": "SSH port (default: 22)", "default": 0},
+                        "username": {"type": "string", "description": "Username for authentication", "default": ""},
+                        "ssh_key_path": {"type": "string", "description": "Path to SSH private key file", "default": ""}
+                    },
+                    "required": []
                 }
             )
         ]
@@ -528,7 +1092,7 @@ def main():
                 session_manager = StreamableHTTPSessionManager(
                     app=mcp_server,
                     event_store=None,  # No persistence
-                    stateless=True
+                    stateless=False  # Keep sessions alive for elicitation!
                 )
                 
                 # ASGI handler
