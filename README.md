@@ -2,11 +2,71 @@
 
 A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM interactions with network equipment.
 
-## ⚠️ Important Security Notice
+## Table of Contents
+
+- [junos-mcp-server](#junos-mcp-server)
+  - [Table of Contents](#table-of-contents)
+  - [Important Security Notice](#important-security-notice)
+    - [Security Requirements](#security-requirements)
+    - [Security Best Practices](#security-best-practices)
+  - [Important Configuration Notice](#important-configuration-notice)
+  - [Getting Started](#getting-started)
+    - [Running with uv](#running-with-uv)
+  - [Start Junos MCP Server](#start-junos-mcp-server)
+  - [Configuration](#configuration)
+    - [Config for Claude Desktop (stdio transport)](#config-for-claude-desktop-stdio-transport)
+    - [Config for Claude Desktop (using uv)](#config-for-claude-desktop-using-uv)
+    - [Config for Claude Desktop (Docker container)](#config-for-claude-desktop-docker-container)
+  - [Docker Usage](#docker-usage)
+    - [Build Docker Container](#build-docker-container)
+    - [Running with Default Settings](#running-with-default-settings)
+    - [Overriding Default Arguments](#overriding-default-arguments)
+  - [Junos Device Configuration](#junos-device-configuration)
+  - [Dynamic Device Management with Elicitation](#dynamic-device-management-with-elicitation)
+    - [Elicitation Compatibility Notice](#elicitation-compatibility-notice)
+    - [The `add_device` Tool](#the-add_device-tool)
+      - [How It Works](#how-it-works)
+      - [Security Note](#security-note)
+      - [Example Usage](#example-usage)
+      - [SSH Key Requirements](#ssh-key-requirements)
+      - [Limitations](#limitations)
+  - [VSCode + GitHub Copilot Integration](#vscode--github-copilot-integration)
+    - [Start Your Server](#start-your-server)
+    - [Point to This URL in Your VSCode Config](#point-to-this-url-in-your-vscode-config)
+  - [Authentication for MCP Server Access](#authentication-for-mcp-server-access)
+    - [Authentication Behavior](#authentication-behavior)
+    - [Token Management](#token-management)
+      - [Generate a New Token](#generate-a-new-token)
+      - [List All Tokens](#list-all-tokens)
+      - [Show Token Value (Recovery)](#show-token-value-recovery)
+      - [Revoke a Token](#revoke-a-token)
+    - [Server Authentication Status](#server-authentication-status)
+    - [Client Configuration with Authentication](#client-configuration-with-authentication)
+      - [VSCode Configuration with Token](#vscode-configuration-with-token)
+      - [Testing with curl](#testing-with-curl)
+      - [Docker with Authentication](#docker-with-authentication)
+    - [Security Best Practices](#security-best-practices-1)
+    - [Token File Format](#token-file-format)
+  - [Using MCP Server with Juniper Cloud-Native Router (JCNR)](#using-mcp-server-with-juniper-cloud-native-router-jcnr)
+  - [Developer Guide](#developer-guide)
+    - [Architecture Overview](#architecture-overview)
+    - [How Tools Work](#how-tools-work)
+    - [Adding a New Tool](#adding-a-new-tool)
+      - [Step 1: Create a Handler Function](#step-1-create-a-handler-function)
+      - [Step 2: Register the Handler](#step-2-register-the-handler)
+      - [Step 3: Define Tool Metadata](#step-3-define-tool-metadata)
+    - [Example: Creating a BGP Neighbors Tool](#example-creating-a-bgp-neighbors-tool)
+    - [Using Elicitation in Tools](#using-elicitation-in-tools)
+    - [Best Practices for Tool Development](#best-practices-for-tool-development)
+    - [Using PyEZ for Advanced Operations](#using-pyez-for-advanced-operations)
+    - [Testing Your Tools](#testing-your-tools)
+    - [Debugging Tips](#debugging-tips)
+
+## Important Security Notice
 
 > **Warning:** This server enables LLM access to your network infrastructure. Please review these security considerations carefully.
 
-### 🔒 Security Requirements
+### Security Requirements
 
 - **Corporate Policy Compliance**: Only use this server if your company's policy allows sending data of Junos devices to LLM services.
 
@@ -16,7 +76,7 @@ A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM
 
 - **Deployment Strategy**: Until your MCP server is properly secured, only deploy locally for testing purposes. Do not deploy remote servers in production without proper security measures.
 
-### 🛡️ Security Best Practices
+### Security Best Practices
 
 - Use SSH key authentication instead of passwords
 - Implement proper network access controls
@@ -24,13 +84,13 @@ A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM
 - Regular security audits and updates
 - Follow your organization's security policies
 
-## ⚠️ Important Configuration Notice
+## Important Configuration Notice
 
 > **Warning:** The Junos MCP server supports configuration changes, but please ensure you only use this functionality when you want LLM-generated configurations to be loaded and committed on your Junos router. 
 
 **Always review the configuration being generated by the LLM and only allow tool execution if it's the correct configuration for your use case.**
 
-## Getting started
+## Getting Started
 
 Get the code.
 ```bash
@@ -45,7 +105,7 @@ If you're using [uv](https://github.com/astral-sh/uv), you can run the server di
 uv run python jmcp.py -f devices.json -t stdio
 ```
 
-## Start Junos MCP server
+## Start Junos MCP Server
 
 ```bash
 $ python3.11 jmcp.py --help
@@ -63,7 +123,9 @@ options:
 
 Junos MCP server supports both streamable-http and stdio transport. Do not use --host with stdio transport.
 
-## Config for Claude desktop [using stdio transport]
+## Configuration
+
+### Config for Claude Desktop (stdio transport)
 
 ```json
 {
@@ -77,7 +139,7 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
 }
 ```
 
-### Config for Claude desktop [using uv]
+### Config for Claude Desktop (using uv)
 
 ```json
 {
@@ -93,7 +155,7 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
 
 **Note:** Please provide absolute path for jmcp.py and devices.json file.
 
-## Config for Claude desktop [using stdio transport and running it as a docker container]
+### Config for Claude Desktop (Docker container)
 
 ```json
 {
@@ -163,7 +225,7 @@ $ docker build -t junos-mcp-server:latest .
 ```
 
 **Note:** Mount your config file (devices.json) and mount any other files, in my case I am using pem file for ssh priv key authentication so I am also mounting vsrx_keypair.pem
-## Junos device config 
+## Junos Device Configuration 
 
 Junos MCP server supports both password based auth as well as ssh key based auth.
 
@@ -201,9 +263,83 @@ Junos MCP server supports both password based auth as well as ssh key based auth
 
 **Note:** Port value should be an integer (typically 22 for SSH).
 
-## VSCode + GitHub Copilot + Junos MCP server using streamable-http transport
+## Dynamic Device Management with Elicitation
 
-### Start your server
+### Elicitation Compatibility Notice
+
+> **Important:** The elicitation feature currently only works with **VSCode** (using streamable-http transport). Claude Desktop does not yet support elicitation, so the `add_device` tool will not work with Claude Desktop.
+
+### The `add_device` Tool
+
+The Junos MCP server includes a powerful `add_device` tool that allows you to dynamically add new Junos devices without modifying the configuration file. This tool uses MCP's elicitation feature to interactively collect device information.
+
+#### How It Works
+
+When you use the `add_device` tool, it will interactively ask for:
+
+1. **Device Name**: A unique identifier for your device (e.g., "router1-east")
+2. **IP Address**: The device's IP address
+3. **SSH Port**: The SSH port (defaults to 22)
+4. **Username**: The username for authentication
+5. **SSH Key Path**: The path to the SSH private key file on the MCP server
+
+The tool validates each input:
+- Device names must be unique
+- IP addresses must be valid
+- SSH key files must exist and be readable
+- Optional connection test before adding the device
+
+#### Security Note
+
+The `add_device` tool **only supports SSH key authentication**. Password authentication has been disabled for security reasons and because VSCode's elicitation UI doesn't properly mask password fields.
+
+#### Example Usage
+
+In VSCode with GitHub Copilot:
+
+```
+@jmcp Please add a new device to the MCP server
+```
+
+The tool will then guide you through the process:
+
+1. **Enter device name**: `vsrx-lab1`
+2. **Enter IP address**: `10.0.1.100`
+3. **Enter SSH port**: `22` (or press Enter for default)
+4. **Enter username**: `admin`
+5. **Enter SSH key path**: `/home/user/.ssh/junos_key.pem`
+6. **Confirm and optionally test connection**
+
+After successful addition, the device is immediately available for use with all other Junos MCP tools.
+
+#### SSH Key Requirements
+
+- The SSH private key file must exist on the MCP server filesystem
+- The file must be readable by the process running the MCP server
+- For Docker deployments, mount the SSH key file into the container
+
+Example Docker mount:
+```bash
+docker run --rm -it \
+  -v /path/to/devices.json:/app/config/devices.json \
+  -v /path/to/ssh_key.pem:/app/config/ssh_key.pem \
+  -p 30030:30030 \
+  junos-mcp-server:latest \
+  python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+```
+
+#### Limitations
+
+- **VSCode Only**: Elicitation is not supported in Claude Desktop
+- **SSH Key Only**: No password authentication support
+- **No Persistence**: Added devices are only stored in memory; they will be lost when the server restarts
+- **Timeout**: Users have 5 minutes to respond to each prompt
+
+For Claude Desktop users, devices must still be configured in the `devices.json` file as described in the [Junos device config](#junos-device-config) section.
+
+## VSCode + GitHub Copilot Integration
+
+### Start Your Server
 
 ```bash
 $ python3.11 jmcp.py -f devices.json
@@ -214,7 +350,7 @@ INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 ```
 
-### Point to this URL in your VSCode config
+### Point to This URL in Your VSCode Config
 
 ```json
 {
@@ -230,7 +366,7 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 
 **Note:** You can use VSCode's `Cmd+Shift+P` to configure MCP server.
 
-## 🔐 Authentication for MCP Server Access
+## Authentication for MCP Server Access
 
 The Junos MCP server supports token-based authentication for secure client access when using streamable-http transport. This prevents unauthorized access to your network infrastructure.
 
@@ -409,7 +545,7 @@ The `.tokens` file stores tokens in JSON format:
 
 **Important**: Keep this file secure and don't commit it to version control.
 
-### Using MCP server with Juniper Cloud-Native Router (JCNR)
+## Using MCP Server with Juniper Cloud-Native Router (JCNR)
 
 JCNR is a cloud native router that runs on various cloud environments. One can use this MCP server with JCNR as well by following the steps given below. Please refer to JCNR documentation for more details on configuration.
 
@@ -425,7 +561,7 @@ set system root-authentication encrypted-password "$6$3vvMI$RNemhmu9izWXzO46msh3
 set system root-authentication load-key-file <public key>
 ```
 
-## 🛠️ Developer Guide
+## Developer Guide
 
 This section explains the architecture of the Junos MCP server and how to extend it with new tools.
 
@@ -486,7 +622,8 @@ TOOL_HANDLERS = {
     "gather_device_facts": handle_gather_device_facts,
     "get_router_list": handle_get_router_list,
     "load_and_commit_config": handle_load_and_commit_config,
-    "my_new_tool": handle_my_new_tool,  # Add your tool here
+    "add_device": handle_add_device,      # Dynamic device management with elicitation
+    "my_new_tool": handle_my_new_tool,    # Add your tool here
 }
 ```
 
@@ -553,6 +690,39 @@ types.Tool(
 )
 ```
 
+### Using Elicitation in Tools
+
+The MCP server supports elicitation for interactive data collection. To use elicitation in your tools:
+
+```python
+from mcp.server.elicitation import ElicitationResult
+from pydantic import BaseModel, Field
+
+# Define elicitation schema
+class MyInputSchema(BaseModel):
+    user_input: str = Field(description="Enter your input")
+
+async def handle_my_elicitation_tool(arguments: dict, context: Context) -> list[types.ContentBlock]:
+    """Tool that uses elicitation to collect user input"""
+    
+    # Use elicitation to ask for user input
+    result = await context.elicit(
+        message="Please provide the required input:",
+        schema=MyInputSchema
+    )
+    
+    # Handle the result
+    match result:
+        case AcceptedElicitation(data=data):
+            user_input = data.user_input
+            # Process the input...
+            return [types.TextContent(type="text", text=f"Processing: {user_input}")]
+        case DeclinedElicitation() | CancelledElicitation():
+            return [types.TextContent(type="text", text="Operation cancelled")]
+```
+
+**Note**: Elicitation currently only works with VSCode (streamable-http transport). Claude Desktop does not support elicitation yet.
+
 ### Best Practices for Tool Development
 
 1. **Error Handling**: Always handle connection errors and invalid inputs gracefully
@@ -561,6 +731,8 @@ types.Tool(
 4. **Documentation**: Write clear descriptions for tools and parameters
 5. **Timeouts**: Support configurable timeouts for long-running operations
 6. **Return Format**: Always return `list[types.ContentBlock]` with text content
+7. **Elicitation**: Use elicitation for interactive data collection when needed
+8. **Context Parameter**: Include `context: Context` parameter if using elicitation
 
 ### Using PyEZ for Advanced Operations
 
