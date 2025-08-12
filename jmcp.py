@@ -78,6 +78,8 @@ from jnpr.junos import Device
 from jnpr.junos.exception import ConnectError
 from jnpr.junos.utils.config import Config
 
+from utils.config import prepare_connection_params, validate_device_config, validate_all_devices
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger('jmcp-server')
@@ -545,7 +547,7 @@ async def handle_add_device(arguments: dict, context: Context) -> list[types.Con
                             log.warning(f"Error while closing test transport to {device_name}: {transport_error}")
         
         # Step 8: Add device to global devices dictionary
-        devices[device_name] = {
+        new_device_config = {
             "ip": device_ip,
             "port": device_port,
             "username": username,
@@ -554,6 +556,12 @@ async def handle_add_device(arguments: dict, context: Context) -> list[types.Con
                 "private_key_path": ssh_key_path
             }
         }
+        
+        # Validate the new device configuration before adding
+        validate_device_config(device_name, new_device_config)
+        
+        # Add the validated configuration to devices
+        devices[device_name] = new_device_config
         
         log.info(f"Successfully added device '{device_name}' to devices dictionary")
         await ctx.info(f"Device '{device_name}' added successfully!")
@@ -574,44 +582,6 @@ The device is now available for use with all Junos MCP tools."""
         return [types.TextContent(type="text", text=f"❌ Failed to add device: {str(e)}")]
 
 
-def prepare_connection_params(device_info: dict, router_name: str) -> dict:
-    """Prepare connection parameters based on authentication type
-    
-    Args:
-        device_info(dict): Device configuration dictionary
-        router_name(str): Name of the router (used for error messages)
-    
-    Returns:
-        dict: Connection parameters for Junos Device
-    
-    Raises:
-        ValueError: If authentication configuration is invalid
-    """
-    # Base connection parameters
-    connect_params = {
-        'host': device_info['ip'],
-        'port': device_info['port'],
-        'user': device_info['username'],
-        'gather_facts': False,
-        'timeout': 360  # Default timeout of 360 seconds
-    }
-    
-    # Handle different authentication methods
-    if 'auth' in device_info:
-        auth_config = device_info['auth']
-        if auth_config['type'] == 'password':
-            connect_params['password'] = auth_config['password']
-        elif auth_config['type'] == 'ssh_key':
-            connect_params['ssh_private_key_file'] = auth_config['private_key_path']
-        else:
-            raise ValueError(f"Unsupported auth type '{auth_config['type']}' for {router_name}")
-    elif 'password' in device_info:
-        # Backward compatibility with old format
-        connect_params['password'] = device_info['password']
-    else:
-        raise ValueError(f"No valid authentication method found for {router_name}")
-    
-    return connect_params
 
 def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -> str:
     """Internal helper to connect and run a Junos CLI command."""
@@ -1045,6 +1015,9 @@ def main():
     try:
         with open(args.device_mapping, 'r') as f:
             devices = json.load(f)
+            # Validate all device configurations
+            validate_all_devices(devices)
+            log.info(f"Successfully loaded and validated {len(devices)} device(s)")
     except FileNotFoundError:
         print(f"File {args.device_mapping} not found.")
         devices = {}
@@ -1053,6 +1026,9 @@ def main():
         print(f"File {args.device_mapping} is not a valid JSON file.")
         devices = {}
         raise
+    except ValueError as e:
+        print(f"Device configuration validation failed: {e}")
+        sys.exit(1)
 
     # Set up signal handler for clean shutdown
     def signal_handler(sig, frame):
