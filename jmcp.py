@@ -601,6 +601,20 @@ def _run_junos_cli_command(router_name: str, command: str, timeout: int = 360) -
     except Exception as e:
         return f"An error occurred: {e}"
 
+def get_timeout_with_fallback(arguments_timeout: int = None) -> int:
+    """Get timeout value with fallback priority: arguments -> ENV -> default (360)"""
+    if arguments_timeout is not None:
+        return arguments_timeout
+    
+    env_timeout = os.getenv('JUNOS_TIMEOUT')
+    if env_timeout is not None:
+        try:
+            return int(env_timeout)
+        except ValueError:
+            log.warning(f"Invalid JUNOS_TIMEOUT environment variable value: {env_timeout}. Using default timeout.")
+    
+    return 360
+
 def validate_token_from_file(token: str) -> bool:
     """Validate if a token exists in the .tokens file"""
     try:
@@ -674,7 +688,7 @@ async def handle_execute_junos_command(arguments: dict, context: Context) -> lis
     """Handler for execute_junos_command tool"""
     router_name = arguments.get("router_name", "")
     command = arguments.get("command", "")
-    timeout = arguments.get("timeout", 360)
+    timeout = get_timeout_with_fallback(arguments.get("timeout"))
     
     if router_name not in devices:
         result = f"Router {router_name} not found in the device mapping."
@@ -715,7 +729,7 @@ async def handle_junos_config_diff(arguments: dict, context: Context) -> list[ty
 async def handle_gather_device_facts(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for gather_device_facts tool"""
     router_name = arguments.get("router_name", "")
-    timeout = arguments.get("timeout", 360)
+    timeout = get_timeout_with_fallback(arguments.get("timeout"))
     
     if router_name not in devices:
         result = f"Router {router_name} not found in the device mapping."
