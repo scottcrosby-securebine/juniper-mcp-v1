@@ -36,8 +36,15 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the main application
+# Copy the main application and utils module
 COPY jmcp.py .
+COPY jmcp_token_manager.py .
+COPY utils/ ./utils/
+
+# Copy test files
+COPY test_config_validation.py .
+COPY test_invalid_devices.json .
+COPY test_junos_cli.py .
 
 # Copy configuration files
 # COPY devices.json /app/config/devices.json

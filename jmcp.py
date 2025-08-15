@@ -848,7 +848,7 @@ TOOL_HANDLERS = {
 
 def create_mcp_server() -> Server:
     """Create and configure the MCP server with all tools"""
-    app = Server(JUNOS_MCP)
+    app = Server(JUNOS_MCP, version="1.0.0")
     
     @app.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[types.ContentBlock]:
@@ -1046,19 +1046,13 @@ def main():
         if args.transport == 'stdio':
             # For stdio transport, run directly
             from mcp.server.stdio import stdio_server
-            from mcp.server.models import InitializationOptions, ServerCapabilities
             
             async def run_stdio():
                 async with stdio_server() as (read_stream, write_stream):
-                    init_options = InitializationOptions(
-                        server_name=JUNOS_MCP,
-                        server_version="1.0.0",
-                        capabilities=ServerCapabilities()
-                    )
                     await mcp_server.run(
                         read_stream,
                         write_stream,
-                        init_options
+                        mcp_server.create_initialization_options()
                     )
             
             anyio.run(run_stdio)
