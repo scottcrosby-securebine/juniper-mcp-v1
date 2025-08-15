@@ -780,6 +780,7 @@ async def handle_load_and_commit_config(arguments: dict, context: Context) -> li
     config_text = arguments.get("config_text", "")
     config_format = arguments.get("config_format", "set")
     commit_comment = arguments.get("commit_comment", "Configuration loaded via MCP")
+    timeout = get_timeout_with_fallback(arguments.get("timeout"))
     
     if router_name not in devices:
         result = f"Router {router_name} not found in the device mapping."
@@ -823,7 +824,7 @@ async def handle_load_and_commit_config(arguments: dict, context: Context) -> li
                                     result = "No configuration changes detected"
                                 else:
                                     # Commit the configuration
-                                    config_util.commit(comment=commit_comment)
+                                    config_util.commit(comment=commit_comment, timeout=timeout)
                                     config_util.unlock()
                                     result = f"Configuration successfully loaded and committed on {router_name}. Changes:\n{diff}"
                                     
