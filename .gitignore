@@ -56,3 +56,6 @@ devices.json
 # Backup files
 *.bak
 *.backup
+
+# Power point files
+*.pptx

@@ -119,6 +119,10 @@ def prepare_connection_params(device_info: Dict[str, Any], router_name: str) -> 
         'timeout': 360  # Default timeout of 360 seconds
     }
     
+    # Add SSH config file if specified
+    if 'ssh_config' in device_info:
+        connect_params['ssh_config'] = device_info['ssh_config']
+    
     # Handle different authentication methods
     if 'auth' in device_info:
         auth_config = device_info['auth']
