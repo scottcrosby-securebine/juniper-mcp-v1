@@ -224,10 +224,11 @@ Build docker container for Junos MCP Server
 $ docker build -t junos-mcp-server:latest .
 ```
 
-**Note:** Mount your config file (devices.json) and mount any other files, in my case I am using pem file for ssh priv key authentication so I am also mounting vsrx_keypair.pem
-## Junos Device Configuration 
+**Note:** Mount your config file `devices.json` and mount any other files, in my case I am using pem file for ssh priv key authentication so I am also mounting vsrx_keypair.pem
 
-Junos MCP server supports both password based auth as well as ssh key based auth.
+## Junos Device Configuration
+
+Junos MCP server supports both `password` based auth as well as `SSH key` based authentication (See first 2 routers configs [router-1, router-2]).
 
 ```json
 {
@@ -253,6 +254,17 @@ Junos MCP server supports both password based auth as well as ssh key based auth
         "ip": "ip-addr",
         "port": 22,
         "username": "user",
+        "ssh_config": "~/.ssh/config_dc",
+        "auth": {
+            "type": "ssh_key",
+            "private_key_path": "/path/to/private/key.pem"
+        }
+    },
+    "router-4": {
+        "ip": "ip-addr",
+        "port": 22,
+        "username": "user",
+        "ssh_config": "/home/user/.ssh/config_jumphost",
         "auth": {
             "type": "password",
             "password": "pwd"
@@ -261,7 +273,33 @@ Junos MCP server supports both password based auth as well as ssh key based auth
 }
 ```
 
-**Note:** Port value should be an integer (typically 22 for SSH).
+Junos MCP server also provides support for `ProxyCommand`. (See last 2 routers configs [router-3, router-4]), which enables you to access a target device through an intermediary host that supports `netcat`. This is useful when you can only log in to the target device through the intermediate host (jumphost).
+
+This is an example of an SSH config file being used `.ssh/config_jumphost`:
+
+```bash
+# Jumphost VM Connection
+Host jumphost-vm
+  HostName 10.2.11.200
+  User root
+  # Used for MCP server
+  IdentityFile /home/user/.ssh/id_rsa_claude
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+
+# cRPD Devices (via jump host)
+Host dt-crpd1 dtwin-crpd1 digital-twin-crpd1 clab-digital-twin-eop6-pe1
+    HostName 172.20.20.11
+    User claude
+    IdentityFile c
+    # ProxyJump jumphost-vm # Not working with JunOS MCP
+    ProxyCommand ssh -l root jumphost-vm nc %h 22 2>/dev/null
+    StrictHostKeyChecking no
+```
+
+**Note #1:** `Port` value should be an integer (typically `22` for SSH).
+
+**Note #2:** `IdentityFile` recommendation use full path (e.g `/home/user/.ssh/id_rsa_claude` rather than `~/.ssh/id_rsa_claude`).
 
 ## Dynamic Device Management with Elicitation
 
