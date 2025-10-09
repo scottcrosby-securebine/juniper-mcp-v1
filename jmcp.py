@@ -24,7 +24,9 @@ import time
 from datetime import datetime, timezone
 import logging
 import os
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 import json
+import yaml
 import sys
 import signal
 from typing import Any, Sequence
@@ -756,6 +758,199 @@ async def handle_junos_config_diff(arguments: dict, context: Context) -> list[ty
     return [content_block]
 
 
+
+async def handle_render_and_apply_j2_template(arguments: dict, context) -> list[types.ContentBlock]:
+    """
+    Handler for render_and_apply_j2_template tool
+    
+    Renders a Jinja2 template with variables and optionally applies it to devices
+    
+    Args:
+        arguments: Dictionary containing:
+            - template_content: Jinja2 template content as string
+            - vars_content: YAML variables content as string
+            - router_name: Router name to apply config to (optional, single router)
+            - router_names: List of router names to apply config to (optional, multiple routers)
+            - apply_config: Boolean to apply or just render (default: False)
+            - commit_comment: Optional commit comment
+            - dry_run: Boolean to show diff without committing (default: False)
+        context: MCP Context object
+    
+    Returns:
+        List of TextContent blocks with results
+    """
+    template_content = arguments.get("template_content", "")
+    vars_content = arguments.get("vars_content", "")
+    router_name = arguments.get("router_name", "")
+    router_names = arguments.get("router_names", [])
+    apply_config = arguments.get("apply_config", False)
+    commit_comment = arguments.get("commit_comment", "Configuration applied via Jinja2 template")
+    dry_run = arguments.get("dry_run", False)
+    
+    results = []
+    
+    # Step 1: Validate inputs
+    if not template_content:
+        return [types.TextContent(
+            type="text",
+            text="❌ Error: template_content is required"
+        )]
+    
+    if not vars_content:
+        return [types.TextContent(
+            type="text",
+            text="❌ Error: vars_content is required"
+        )]
+    
+    # Handle single router_name or list of router_names
+    if router_name and not router_names:
+        router_names = [router_name]
+    
+    # Step 2: Load variables from YAML string
+    try:
+        await context.info("Parsing variables from YAML content...")
+        variables = yaml.safe_load(vars_content)
+        
+        if not variables:
+            return [types.TextContent(
+                type="text",
+                text="❌ Error: Variables content is empty or invalid"
+            )]
+            
+        await context.debug(f"Loaded variables: {variables}")
+        
+    except yaml.YAMLError as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error parsing YAML content: {e}"
+        )]
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error loading variables: {e}"
+        )]
+    
+    # Step 3: Setup Jinja2 environment and render template
+    try:
+        await context.info("Rendering Jinja2 template...")
+        
+        env = Environment(
+            trim_blocks=True,
+            lstrip_blocks=True,
+            autoescape=False
+        )
+        
+        template = env.from_string(template_content)
+        rendered_config = template.render(variables)
+        
+        await context.debug(f"Rendered configuration:\n{rendered_config}")
+        
+    except TemplateError as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error rendering template: {e}"
+        )]
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error during template rendering: {e}"
+        )]
+    
+    # Step 4: If not applying, just return the rendered config
+    if not apply_config:
+        result_text = f"""✅ Template rendered successfully!
+
+**Rendered Configuration:**
+```
+{rendered_config}
+```
+
+To apply this configuration to devices, set apply_config=true and provide router_name or router_names.
+"""
+        return [types.TextContent(
+            type="text",
+            text=result_text,
+            annotations={
+                "rendered_config": rendered_config,
+                "variables": str(variables)
+            }
+        )]
+    
+    # Step 5: Apply configuration to specified routers
+    if not router_names:
+        return [types.TextContent(
+            type="text",
+            text="❌ Error: router_name or router_names must be provided when apply_config=true"
+        )]
+    
+    # Import devices from global scope
+    from __main__ import devices
+    
+    application_results = []
+    
+    for rtr_name in router_names:
+        if rtr_name not in devices:
+            application_results.append(f"❌ {rtr_name}: Router not found in device mapping")
+            await context.warning(f"Router {rtr_name} not found")
+            continue
+        
+        try:
+            await context.info(f"Applying configuration to {rtr_name}...")
+            
+            # Use the existing load_and_commit_config handler
+            from __main__ import handle_load_and_commit_config
+            
+            apply_args = {
+                "router_name": rtr_name,
+                "config_text": rendered_config,
+                "config_format": "set",
+                "commit_comment": commit_comment,
+                "dry_run": dry_run
+            }
+            
+            result = await handle_load_and_commit_config(apply_args, context)
+            
+            # Extract the text from the result
+            if result and len(result) > 0:
+                result_text = result[0].text
+                application_results.append(f"{'🔍' if dry_run else '✅'} {rtr_name}: {result_text}")
+            else:
+                application_results.append(f"❓ {rtr_name}: Unknown result")
+                
+        except Exception as e:
+            error_msg = f"❌ {rtr_name}: Failed to apply configuration: {e}"
+            application_results.append(error_msg)
+            await context.error(error_msg)
+    
+    # Step 6: Format final results
+    summary = "\n".join(application_results)
+    
+    final_text = f"""{'🔍 DRY RUN - ' if dry_run else ''}Configuration {'preview' if dry_run else 'application'} complete!
+
+**Routers:** {', '.join(router_names)}
+
+**Rendered Configuration:**
+```
+{rendered_config}
+```
+
+**Results:**
+{summary}
+"""
+    
+    return [types.TextContent(
+        type="text",
+        text=final_text,
+        annotations={
+            "router_names": router_names,
+            "rendered_config": rendered_config,
+            "dry_run": dry_run,
+            "variables": str(variables)
+        }
+    )]
+
+
+
 async def handle_gather_device_facts(arguments: dict, context: Context) -> list[types.ContentBlock]:
     """Handler for gather_device_facts tool"""
     router_name = arguments.get("router_name", "")
@@ -905,6 +1100,7 @@ TOOL_HANDLERS = {
     "execute_junos_command": handle_execute_junos_command,
     "get_junos_config": handle_get_junos_config,
     "junos_config_diff": handle_junos_config_diff,
+    "render_and_apply_j2_template": handle_render_and_apply_j2_template,
     "gather_device_facts": handle_gather_device_facts,
     "get_router_list": handle_get_router_list,
     "load_and_commit_config": handle_load_and_commit_config,
@@ -983,6 +1179,22 @@ def create_mcp_server() -> Server:
                         "version": {"type": "integer", "description": "Rollback version to compare against (1-49)", "default": 1}
                     },
                     "required": ["router_name"]
+                }
+            ),
+            types.Tool(
+                name="render_and_apply_j2_template",
+                description="Render a Jinja2 template and apply it to the router",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "router_name": {"type": "string", "description": "The name of the router"},
+                        "template_content": {"type": "string", "description": "Jinja2 template to load"},
+                        "vars_content": {"type": "string", "description": "YAML variables to load"},
+                        "apply_config": {"type": "boolean", "description": "Boolean to apply or just render (default: False)"},
+                        "dry_run": {"type": "boolean", "description": "Boolean to show diff without committing (default: False)"},
+                        "commit_comment": {"type": "string", "description": "Commit comment", "default": "Configuration loaded via MCP"}
+                    },
+                    "required": ["template_content", "vars_content"]
                 }
             ),
             types.Tool(
