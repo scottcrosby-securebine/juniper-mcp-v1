@@ -170,7 +170,7 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
         "-v",
         "devices.json:/app/config/devices.json",
         "-v",
-        "vsrx_keypair.pem:/app/config/vsrx_keypair.pem",
+        "your-ssh-key.pem:/app/config/your-ssh-key.pem",
         "junos-mcp-server:latest"
       ]
     }
@@ -224,7 +224,7 @@ Build docker container for Junos MCP Server
 $ docker build -t junos-mcp-server:latest .
 ```
 
-**Note:** Mount your config file `devices.json` and mount any other files, in my case I am using pem file for ssh priv key authentication so I am also mounting vsrx_keypair.pem
+**Note:** Mount your config file `devices.json` and mount any other files. If you are using SSH key authentication, mount your private key file (e.g., `-v /path/to/your-ssh-key.pem:/app/config/your-ssh-key.pem`)
 
 ## Junos Device Configuration
 
@@ -280,26 +280,25 @@ This is an example of an SSH config file being used `.ssh/config_jumphost`:
 ```bash
 # Jumphost VM Connection
 Host jumphost-vm
-  HostName 10.2.11.200
-  User root
-  # Used for MCP server
-  IdentityFile /home/user/.ssh/id_rsa_claude
+  HostName 10.0.0.1
+  User admin
+  IdentityFile /home/user/.ssh/id_rsa
   IdentitiesOnly yes
   StrictHostKeyChecking no
 
-# cRPD Devices (via jump host)
-Host dt-crpd1 dtwin-crpd1 digital-twin-crpd1 clab-digital-twin-eop6-pe1
-    HostName 172.20.20.11
-    User claude
-    IdentityFile c
+# Target Device (via jump host)
+Host target-router
+    HostName 192.168.1.1
+    User admin
+    IdentityFile /home/user/.ssh/id_rsa
     # ProxyJump jumphost-vm # Not working with JunOS MCP
-    ProxyCommand ssh -l root jumphost-vm nc %h 22 2>/dev/null
+    ProxyCommand ssh -l admin jumphost-vm nc %h 22 2>/dev/null
     StrictHostKeyChecking no
 ```
 
 **Note #1:** `Port` value should be an integer (typically `22` for SSH).
 
-**Note #2:** `IdentityFile` recommendation use full path (e.g `/home/user/.ssh/id_rsa_claude` rather than `~/.ssh/id_rsa_claude`).
+**Note #2:** `IdentityFile` recommendation use full path (e.g `/home/user/.ssh/id_rsa` rather than `~/.ssh/id_rsa`).
 
 ## Dynamic Device Management with Elicitation
 

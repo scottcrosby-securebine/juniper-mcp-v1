@@ -116,7 +116,8 @@ def prepare_connection_params(device_info: Dict[str, Any], router_name: str) -> 
         'port': device_info['port'],
         'user': device_info['username'],
         'gather_facts': False,
-        'timeout': 360  # Default timeout of 360 seconds
+        'timeout': 360,  # Default timeout of 360 seconds
+        'auto_probe': 0  # Disable auto probe to bypass host key checking issues
     }
     
     # Add SSH config file if specified

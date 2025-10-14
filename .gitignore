@@ -27,6 +27,7 @@ venv.bak/
 ._*
 .Spotlight-V100
 .Trashes
+.Trash-*/
 ehthumbs.db
 Thumbs.db
 
@@ -35,6 +36,12 @@ Thumbs.db
 logs/
 tmp/
 temp/
+
+# Testing and coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Build artifacts
 build/
@@ -51,6 +58,7 @@ id_ed25519*
 .env
 .env.local
 .env.production
+*.env
 devices.json
 
 # Backup files

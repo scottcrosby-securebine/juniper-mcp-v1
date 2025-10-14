@@ -1,40 +1,41 @@
 {
-    "r1": {
-        "ip": "ip",
+    "_comment": "Copy this file to devices.json and replace placeholders with your actual device information. Do not commit devices.json to version control.",
+    "example-router-password": {
+        "ip": "192.168.1.1",
         "port": 22,
-        "username": "user",
+        "username": "admin",
         "auth": {
             "type": "password",
-            "password": "pwd"
+            "password": "your-password-here"
         }
     },
-    "r2": {
-        "ip": "ip",
+    "example-router-ssh-key": {
+        "ip": "10.0.0.1",
         "port": 22,
-        "username": "user",
+        "username": "admin",
         "auth": {
             "type": "ssh_key",
-            "private_key_path": "/path/to/private/key.pem"
+            "private_key_path": "/path/to/your/private/key.pem"
         }
     },
-    "r3": {
-        "ip": "ip",
+    "example-router-with-ssh-config": {
+        "ip": "router.example.com",
         "port": 22,
-        "username": "user",
-        "ssh_config": "~/.ssh/config_dc",
+        "username": "admin",
+        "ssh_config": "~/.ssh/config",
         "auth": {
             "type": "ssh_key",
-            "private_key_path": "/path/to/private/key.pem"
+            "private_key_path": "/path/to/your/private/key.pem"
         }
     },
-    "r4": {
-        "ip": "ip",
-        "port": 22,
-        "username": "user",
-        "ssh_config": "/home/user/.ssh/config_jumphost",
+    "example-eve-ng-device": {
+        "ip": "eve-ng.example.com",
+        "port": 32769,
+        "username": "root",
+        "ssh_config": "~/.ssh/config_jumphost",
         "auth": {
             "type": "password",
-            "password": "pwd"
+            "password": "your-password-here"
         }
     }
 }
