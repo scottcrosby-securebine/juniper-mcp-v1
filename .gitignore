@@ -67,3 +67,28 @@ devices.json
 
 # Power point files
 *.pptx
+
+# UV package manager
+uv.lock
+
+# Additional macOS files
+.AppleDouble
+.LSOverride
+Icon
+
+# Additional Windows files
+Desktop.ini
+
+# Additional Python artifacts
+*.pyo
+*.pyd
+pip-wheel-metadata/
+.ruff_cache/
+.nox/
+.tox/
+.cache/
+.coverage.*
+coverage.xml
+
+# Editor workspace files
+*.code-workspace
