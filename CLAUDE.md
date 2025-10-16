@@ -38,14 +38,16 @@ docker run --rm -it -v /path/to/devices.json:/app/config/devices.json -p 30030:3
 
 ## Architecture
 
-The server implements six MCP tools in `jmcp.py`:
+The server implements eight MCP tools in `jmcp.py`:
 
 1. **execute_junos_command** - Execute arbitrary CLI commands on routers
 2. **get_junos_config** - Retrieve device configuration (uses `show configuration | display inheritance no-comments`)
 3. **junos_config_diff** - Compare configuration versions (rollback comparison)
-4. **gather_device_facts** - Collect device information using PyEZ facts
-5. **get_router_list** - List available routers from the configuration
-6. **load_and_commit_config** - Apply configuration changes (supports set/text/xml formats)
+4. **render_and_apply_j2_template** - Apply Jinja2 configuration templates with variables
+5. **gather_device_facts** - Collect device information using PyEZ facts
+6. **get_router_list** - List available routers from the configuration
+7. **load_and_commit_config** - Apply configuration changes (supports set/text/xml formats)
+8. **add_device** - Dynamically add new devices (VSCode only, uses elicitation)
 
 ### Key Implementation Details
 

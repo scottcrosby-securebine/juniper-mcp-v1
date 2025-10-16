@@ -48,7 +48,7 @@ Docker provides an isolated, reproducible environment for running the server.
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/junos-mcp-server.git
+git clone https://github.com/Juniper/junos-mcp-server.git
 cd junos-mcp-server
 ```
 
@@ -101,7 +101,7 @@ For development or when Docker isn't available, run the server directly with Pyt
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/junos-mcp-server.git
+git clone https://github.com/Juniper/junos-mcp-server.git
 cd junos-mcp-server
 ```
 

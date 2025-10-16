@@ -45,7 +45,7 @@ sequenceDiagram
     MCP->>Config: Load device configuration
     Config-->>MCP: Return router credentials
     MCP->>MCP: Initialize FastMCP framework
-    MCP->>MCP: Register 6 MCP tools:<br/>• execute_junos_command<br/>• get_junos_config<br/>• junos_config_diff<br/>• gather_device_facts<br/>• get_router_list<br/>• load_and_commit_config
+    MCP->>MCP: Register 8 MCP tools:<br/>• execute_junos_command<br/>• get_junos_config<br/>• junos_config_diff<br/>• render_and_apply_j2_template<br/>• gather_device_facts<br/>• get_router_list<br/>• load_and_commit_config<br/>• add_device
 
     Client->>MCP: MCP Protocol: list_tools()
     MCP-->>Client: Return tool definitions<br/>(names, descriptions, parameters)
@@ -187,7 +187,7 @@ graph LR
 
 1. **MCP Client reads config**: Finds server command and transport type
 2. **Server starts**: Loads `devices.json`, initializes FastMCP
-3. **Tool registration**: All 6 tools decorated with `@mcp.tool()` are registered
+3. **Tool registration**: All 8 tools decorated with `@mcp.tool()` are registered
 4. **Client queries**: Sends `list_tools()` request via MCP protocol
 5. **Server responds**: Returns tool schemas (name, description, parameter types)
 6. **LLM context**: Tools are added to LLM's system context for future requests

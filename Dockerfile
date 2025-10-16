@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV MCP_SERVER_HOST=0.0.0.0
 ENV MCP_SERVER_PORT=30030
 ENV MCP_TRANSPORT=stdio
-ENV DEVICE_CONFIG=/app/config/devices.json
+ENV DEVICE_CONFIG=/app/network_devices/devices.json
 ENV LOG_LEVEL=INFO
 ENV FASTMCP_HOST=0.0.0.0
 
@@ -28,7 +28,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Create directories for configuration and logs
-RUN mkdir -p /app/config /app/logs /app/backups
+# Note: /app/network_devices is mounted from ${NETWORK_DEVICES_PATH} on the host
+RUN mkdir -p /app/network_devices /app/logs /app/backups
 
 # Copy requirements file first (for better Docker layer caching)
 COPY requirements.txt .
@@ -67,4 +68,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import psutil; exit(0 if psutil.Process().is_running() else 1)"
 
 # Default command
-CMD ["python", "jmcp.py", "-f", "/app/config/devices.json", "-t", "stdio"]
+# /app/network_devices is mounted from ${NETWORK_DEVICES_PATH} on the host (via docker-compose or -v flag)
+CMD ["python", "jmcp.py", "-f", "/app/network_devices/devices.json", "-t", "stdio"]

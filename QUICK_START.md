@@ -13,7 +13,7 @@ Get started with the Junos MCP Server in 5 minutes!
 ### Step 1: Get the Code
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/junos-mcp-server.git
+git clone https://github.com/Juniper/junos-mcp-server.git
 cd junos-mcp-server
 ```
 
@@ -334,13 +334,14 @@ Host remote-router
 
 ## Next Steps
 
+- **[Warp Terminal Guide](docs/WARP_TERMINAL_GUIDE.md)** - Use Warp AI to manage your devices (perfect for network engineers!)
 - Read [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for advanced configuration
 - See [README.md](README.md) for complete tool documentation
 - Check [CLAUDE.md](CLAUDE.md) for developer information
 
 ## Need Help?
 
-- Check [GitHub Issues](https://github.com/<YOUR_USERNAME>/junos-mcp-server/issues)
+- Check [GitHub Issues](https://github.com/Juniper/junos-mcp-server/issues)
 - Review [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) troubleshooting section
 - Consult the Juniper PyEZ documentation
 

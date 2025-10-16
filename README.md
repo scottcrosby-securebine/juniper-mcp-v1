@@ -12,6 +12,7 @@ A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM
   - [Important Configuration Notice](#important-configuration-notice)
   - [Getting Started](#getting-started)
     - [Running with uv](#running-with-uv)
+  - [Documentation Guides](#documentation-guides)
   - [Start Junos MCP Server](#start-junos-mcp-server)
   - [Configuration](#configuration)
     - [Config for Claude Desktop (stdio transport)](#config-for-claude-desktop-stdio-transport)
@@ -105,6 +106,18 @@ If you're using [uv](https://github.com/astral-sh/uv), you can run the server di
 uv run python jmcp.py -f devices.json -t stdio
 ```
 
+## Documentation Guides
+
+We provide several comprehensive guides to help you get started:
+
+- **[Warp Terminal Guide](docs/WARP_TERMINAL_GUIDE.md)** - Complete guide for network engineers using Warp AI to manage Juniper devices (no programming experience required!)
+- **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Detailed deployment instructions for various environments
+- **[Setup Network Devices](SETUP_NETWORK_DEVICES.md)** - Configure your network devices with Docker
+- **[Developer Guide](#developer-guide)** - Extend the MCP server with custom tools
+
+> **New to terminals or programming?** Start with the [Warp Terminal Guide](docs/WARP_TERMINAL_GUIDE.md) - it's written specifically for network engineers!
+
 ## Start Junos MCP Server
 
 ```bash
@@ -168,9 +181,9 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
         "--rm",
         "-i",
         "-v",
-        "devices.json:/app/config/devices.json",
+        "devices.json:/app/network_devices/devices.json",
         "-v",
-        "your-ssh-key.pem:/app/config/your-ssh-key.pem",
+        "your-ssh-key.pem:/app/network_devices/keys/your-ssh-key.pem",
         "junos-mcp-server:latest"
       ]
     }
@@ -190,10 +203,10 @@ $ docker build -t junos-mcp-server:latest .
 By default, the Docker container runs with stdio transport:
 
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json junos-mcp-server:latest
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json junos-mcp-server:latest
 ```
 
-This uses the default command: `python jmcp.py -f /app/config/devices.json -t stdio`
+This uses the default command: `python jmcp.py -f /app/network_devices/devices.json -t stdio`
 
 ### Overriding Default Arguments
 
@@ -201,30 +214,30 @@ You can override any arguments by specifying the full command:
 
 **For stdio transport:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t stdio
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t stdio
 ```
 
 **For streamable-http transport:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json -p 30030:30030 junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 30030:30030 junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 
 **For streamable-http with custom port:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/config/devices.json -p 8080:8080 junos-mcp-server:latest python jmcp.py -f /app/config/devices.json -t streamable-http -p 8080 -H 0.0.0.0
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 8080:8080 junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -p 8080 -H 0.0.0.0
 ```
 
 **Note:** 
-- Always mount your device configuration file using `-v /path/to/your/devices.json:/app/config/devices.json`
+- Always mount your device configuration file using `-v /path/to/your/devices.json:/app/network_devices/devices.json`
 - For streamable-http transport, expose the port using `-p host_port:container_port`
-- Mount any SSH private key files if using key-based authentication (e.g., `-v /path/to/key.pem:/app/config/key.pem`)
+- Mount any SSH private key files if using key-based authentication (e.g., `-v /path/to/key.pem:/app/network_devices/keys/key.pem`)
 
 Build docker container for Junos MCP Server
 ```
 $ docker build -t junos-mcp-server:latest .
 ```
 
-**Note:** Mount your config file `devices.json` and mount any other files. If you are using SSH key authentication, mount your private key file (e.g., `-v /path/to/your-ssh-key.pem:/app/config/your-ssh-key.pem`)
+**Note:** Mount your config file `devices.json` and mount any other files. If you are using SSH key authentication, mount your private key file (e.g., `-v /path/to/your-ssh-key.pem:/app/network_devices/keys/your-ssh-key.pem`)
 
 ## Junos Device Configuration
 
@@ -358,11 +371,11 @@ After successful addition, the device is immediately available for use with all 
 Example Docker mount:
 ```bash
 docker run --rm -it \
-  -v /path/to/devices.json:/app/config/devices.json \
-  -v /path/to/ssh_key.pem:/app/config/ssh_key.pem \
+  -v /path/to/devices.json:/app/network_devices/devices.json \
+  -v /path/to/ssh_key.pem:/app/network_devices/keys/ssh_key.pem \
   -p 30030:30030 \
   junos-mcp-server:latest \
-  python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+  python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 
 #### Limitations
@@ -536,11 +549,11 @@ python jmcp_token_manager.py generate --id "docker-client"
 
 # Run container with token file mounted
 docker run --rm -it \
-  -v /path/to/devices.json:/app/config/devices.json \
+  -v /path/to/devices.json:/app/network_devices/devices.json \
   -v /path/to/.tokens:/app/.tokens \
   -p 30030:30030 \
   junos-mcp-server:latest \
-  python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0
+  python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 
 ### Security Best Practices
