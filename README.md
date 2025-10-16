@@ -1,10 +1,10 @@
-# junos-mcp-server
+# juniper-mcp-v1
 
 A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM interactions with network equipment.
 
 ## Table of Contents
 
-- [junos-mcp-server](#junos-mcp-server)
+- [juniper-mcp-v1](#juniper-mcp-v1)
   - [Table of Contents](#table-of-contents)
   - [Important Security Notice](#important-security-notice)
     - [Security Requirements](#security-requirements)
@@ -13,7 +13,7 @@ A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM
   - [Getting Started](#getting-started)
     - [Running with uv](#running-with-uv)
   - [Documentation Guides](#documentation-guides)
-  - [Start Junos MCP Server](#start-junos-mcp-server)
+  - [Start Junos MCP Server](#start-juniper-mcp-v1)
   - [Configuration](#configuration)
     - [Config for Claude Desktop (stdio transport)](#config-for-claude-desktop-stdio-transport)
     - [Config for Claude Desktop (using uv)](#config-for-claude-desktop-using-uv)
@@ -95,8 +95,8 @@ A Model Context Protocol (MCP) server for Juniper Junos devices that enables LLM
 
 Get the code.
 ```bash
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 pip install -r requirements.txt
 ```
 
@@ -184,7 +184,7 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
         "devices.json:/app/network_devices/devices.json",
         "-v",
         "your-ssh-key.pem:/app/network_devices/keys/your-ssh-key.pem",
-        "junos-mcp-server:latest"
+        "juniper-mcp-v1:latest"
       ]
     }
   }
@@ -195,7 +195,7 @@ Junos MCP server supports both streamable-http and stdio transport. Do not use -
 ### Build Docker Container
 
 ```bash
-$ docker build -t junos-mcp-server:latest .
+$ docker build -t juniper-mcp-v1:latest .
 ```
 
 ### Running with Default Settings
@@ -203,7 +203,7 @@ $ docker build -t junos-mcp-server:latest .
 By default, the Docker container runs with stdio transport:
 
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json junos-mcp-server:latest
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json juniper-mcp-v1:latest
 ```
 
 This uses the default command: `python jmcp.py -f /app/network_devices/devices.json -t stdio`
@@ -214,17 +214,17 @@ You can override any arguments by specifying the full command:
 
 **For stdio transport:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t stdio
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json juniper-mcp-v1:latest python jmcp.py -f /app/network_devices/devices.json -t stdio
 ```
 
 **For streamable-http transport:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 30030:30030 junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 30030:30030 juniper-mcp-v1:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 
 **For streamable-http with custom port:**
 ```bash
-$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 8080:8080 junos-mcp-server:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -p 8080 -H 0.0.0.0
+$ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices.json -p 8080:8080 juniper-mcp-v1:latest python jmcp.py -f /app/network_devices/devices.json -t streamable-http -p 8080 -H 0.0.0.0
 ```
 
 **Note:** 
@@ -234,7 +234,7 @@ $ docker run --rm -it -v /path/to/your/devices.json:/app/network_devices/devices
 
 Build docker container for Junos MCP Server
 ```
-$ docker build -t junos-mcp-server:latest .
+$ docker build -t juniper-mcp-v1:latest .
 ```
 
 **Note:** Mount your config file `devices.json` and mount any other files. If you are using SSH key authentication, mount your private key file (e.g., `-v /path/to/your-ssh-key.pem:/app/network_devices/keys/your-ssh-key.pem`)
@@ -374,7 +374,7 @@ docker run --rm -it \
   -v /path/to/devices.json:/app/network_devices/devices.json \
   -v /path/to/ssh_key.pem:/app/network_devices/keys/ssh_key.pem \
   -p 30030:30030 \
-  junos-mcp-server:latest \
+  juniper-mcp-v1:latest \
   python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 
@@ -406,7 +406,7 @@ INFO:     Uvicorn running on http://127.0.0.1:30030 (Press CTRL+C to quit)
 {
     "mcp": {
         "servers": {
-            "my-junos-mcp-server": {
+            "my-juniper-mcp-v1": {
                 "url": "http://127.0.0.1:30030/mcp/"
             }
         }
@@ -509,7 +509,7 @@ INFO - Streamable HTTP server started on http://127.0.0.1:30030
 {
     "mcp": {
         "servers": {
-            "my-junos-mcp-server": {
+            "my-juniper-mcp-v1": {
                 "url": "http://127.0.0.1:30030/mcp/",
                 "headers": {
                     "Authorization": "Bearer jmcp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8"
@@ -552,7 +552,7 @@ docker run --rm -it \
   -v /path/to/devices.json:/app/network_devices/devices.json \
   -v /path/to/.tokens:/app/.tokens \
   -p 30030:30030 \
-  junos-mcp-server:latest \
+  juniper-mcp-v1:latest \
   python jmcp.py -f /app/network_devices/devices.json -t streamable-http -H 0.0.0.0
 ```
 

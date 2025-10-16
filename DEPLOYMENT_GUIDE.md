@@ -48,8 +48,8 @@ Docker provides an isolated, reproducible environment for running the server.
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 ```
 
 #### 2. Prepare Device Configuration
@@ -64,7 +64,7 @@ cp devices-template.json devices.json
 #### 3. Build the Docker Image
 
 ```bash
-docker build -t junos-mcp-server:latest .
+docker build -t juniper-mcp-v1:latest .
 ```
 
 #### 4. Run the Container
@@ -75,7 +75,7 @@ docker build -t junos-mcp-server:latest .
 docker run --rm -it \
   -v $(pwd)/devices.json:/app/config/devices.json \
   -v ~/.ssh/id_rsa:/app/keys/id_rsa:ro \
-  junos-mcp-server:latest
+  juniper-mcp-v1:latest
 ```
 
 **For streamable-http transport (VS Code, remote clients):**
@@ -85,7 +85,7 @@ docker run --rm -it \
   -v $(pwd)/devices.json:/app/config/devices.json \
   -v ~/.ssh/id_rsa:/app/keys/id_rsa:ro \
   -p 30030:30030 \
-  junos-mcp-server:latest \
+  juniper-mcp-v1:latest \
   python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0 -p 30030
 ```
 
@@ -101,8 +101,8 @@ For development or when Docker isn't available, run the server directly with Pyt
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 ```
 
 #### 2. Create a Virtual Environment
@@ -233,12 +233,12 @@ Configure Claude Desktop to use the Junos MCP Server by adding it to your Claude
 ```json
 {
   "mcpServers": {
-    "junos-mcp-server": {
+    "juniper-mcp-v1": {
       "command": "python",
       "args": [
-        "/absolute/path/to/junos-mcp-server/jmcp.py",
+        "/absolute/path/to/juniper-mcp-v1/jmcp.py",
         "-f",
-        "/absolute/path/to/junos-mcp-server/devices.json",
+        "/absolute/path/to/juniper-mcp-v1/devices.json",
         "-t",
         "stdio"
       ]
@@ -252,7 +252,7 @@ Configure Claude Desktop to use the Junos MCP Server by adding it to your Claude
 ```json
 {
   "mcpServers": {
-    "junos-mcp-server": {
+    "juniper-mcp-v1": {
       "command": "docker",
       "args": [
         "run",
@@ -262,7 +262,7 @@ Configure Claude Desktop to use the Junos MCP Server by adding it to your Claude
         "/absolute/path/to/devices.json:/app/config/devices.json",
         "-v",
         "/absolute/path/to/your-ssh-key.pem:/app/keys/id_rsa:ro",
-        "junos-mcp-server:latest"
+        "juniper-mcp-v1:latest"
       ]
     }
   }
@@ -293,7 +293,7 @@ Add the server configuration:
 {
   "mcp": {
     "servers": {
-      "junos-mcp-server": {
+      "juniper-mcp-v1": {
         "url": "http://127.0.0.1:30030/mcp/"
       }
     }
@@ -307,7 +307,7 @@ Add the server configuration:
 {
   "mcp": {
     "servers": {
-      "junos-mcp-server": {
+      "juniper-mcp-v1": {
         "url": "http://127.0.0.1:30030/mcp/",
         "headers": {
           "Authorization": "Bearer <YOUR_TOKEN>"
@@ -452,7 +452,7 @@ docker logs <container-id>
 
 **Network connectivity:**
 ```bash
-docker run --rm -it --network host junos-mcp-server:latest
+docker run --rm -it --network host juniper-mcp-v1:latest
 ```
 
 ---
@@ -460,4 +460,4 @@ docker run --rm -it --network host junos-mcp-server:latest
 For additional help, please refer to:
 - [README.md](README.md) - General information and tool documentation
 - [QUICK_START.md](QUICK_START.md) - Quick setup guide
-- [GitHub Issues](https://github.com/<YOUR_USERNAME>/junos-mcp-server/issues) - Report bugs or request features
+- [GitHub Issues](https://github.com/scottcrosby-securebine/juniper-mcp-v1/issues) - Report bugs or request features

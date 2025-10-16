@@ -586,8 +586,8 @@ Action Required: BGP session to 10.0.0.5 on edge-02 needs investigation.</code><
 
         <h3>Standard Installation</h3>
         <pre><code># Clone the repository
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 
 # Install dependencies
 pip install -r requirements.txt
@@ -616,20 +616,20 @@ EOF</code></pre>
 
         <h3>Docker Deployment</h3>
         <pre><code># Build the container
-docker build -t junos-mcp-server:latest .
+docker build -t juniper-mcp-v1:latest .
 
 # Run with stdio transport
 docker run --rm -it \
   -v /path/to/devices.json:/app/config/devices.json \
   -v /path/to/ssh/keys:/app/keys \
-  junos-mcp-server:latest
+  juniper-mcp-v1:latest
 
 # Run with HTTP transport
 docker run --rm -it \
   -v /path/to/devices.json:/app/config/devices.json \
   -v /path/to/ssh/keys:/app/keys \
   -p 30030:30030 \
-  junos-mcp-server:latest \
+  juniper-mcp-v1:latest \
   python jmcp.py -f /app/config/devices.json -t streamable-http -H 0.0.0.0</code></pre>
 
         <h2>Usage Examples and Best Practices</h2>
@@ -721,7 +721,7 @@ AI Assistant: "Let me investigate the connectivity issue..."
         <p>Whether you're managing a small enterprise network or a large service provider infrastructure, the Junos MCP server offers a glimpse into a future where network management is more intuitive, efficient, and accessible than ever before.</p>
 
         <div class="footer">
-            <p><em>For more information and to contribute to the project, visit the <a href="https://github.com/Juniper/junos-mcp-server">Junos MCP Server GitHub repository</a>.</em></p>
+            <p><em>For more information and to contribute to the project, visit the <a href="https://github.com/scottcrosby-securebine/juniper-mcp-v1">Junos MCP Server GitHub repository</a>.</em></p>
         </div>
     </div>
 </body>

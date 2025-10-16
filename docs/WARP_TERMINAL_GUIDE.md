@@ -319,14 +319,14 @@ First, get the Juniper MCP server code:
 
 ```bash
 cd ~/Documents
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 ```
 
 **Build the Docker image:**
 
 ```bash
-docker build -t junos-mcp-server:latest .
+docker build -t juniper-mcp-v1:latest .
 ```
 
 **Ask Warp AI while building:**
@@ -401,7 +401,7 @@ registry:
     title: "Juniper Network Device Manager"
     type: server
     dateAdded: "2025-01-16T00:00:00Z"
-    image: junos-mcp-server:latest
+    image: juniper-mcp-v1:latest
     tools:
       - name: execute_junos_command
       - name: get_junos_config
@@ -970,7 +970,7 @@ cat ~/.docker/mcp/catalogs/custom.yaml
 **Step 2 - Check if the image exists:**
 
 ```bash
-docker images | grep junos-mcp-server
+docker images | grep juniper-mcp-v1
 ```
 
 **Step 3 - Test the configuration:**
@@ -1336,7 +1336,7 @@ Regularly update your MCP server images:
 ```bash
 # Pull latest images
 docker pull docker/mcp-gateway
-docker pull junos-mcp-server:latest
+docker pull juniper-mcp-v1:latest
 
 # Remove old images
 docker image prune

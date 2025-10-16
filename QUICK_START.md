@@ -13,8 +13,8 @@ Get started with the Junos MCP Server in 5 minutes!
 ### Step 1: Get the Code
 
 ```bash
-git clone https://github.com/Juniper/junos-mcp-server.git
-cd junos-mcp-server
+git clone https://github.com/scottcrosby-securebine/juniper-mcp-v1.git
+cd juniper-mcp-v1
 ```
 
 ### Step 2: Configure Your Devices
@@ -45,13 +45,13 @@ Edit `devices.json` with your device information:
 
 ```bash
 # Build the image
-docker build -t junos-mcp-server:latest .
+docker build -t juniper-mcp-v1:latest .
 
 # Run the server
 docker run --rm -it \
   -v $(pwd)/devices.json:/app/config/devices.json \
   -v ~/.ssh/id_rsa:/app/keys/id_rsa:ro \
-  junos-mcp-server:latest
+  juniper-mcp-v1:latest
 ```
 
 **Option B: Local Python**
@@ -73,12 +73,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ```json
 {
   "mcpServers": {
-    "junos-mcp-server": {
+    "juniper-mcp-v1": {
       "command": "python",
       "args": [
-        "/absolute/path/to/junos-mcp-server/jmcp.py",
+        "/absolute/path/to/juniper-mcp-v1/jmcp.py",
         "-f",
-        "/absolute/path/to/junos-mcp-server/devices.json",
+        "/absolute/path/to/juniper-mcp-v1/devices.json",
         "-t",
         "stdio"
       ]
@@ -102,7 +102,7 @@ Then configure in VS Code (Cmd+Shift+P → "MCP: Configure Servers"):
 {
   "mcp": {
     "servers": {
-      "junos-mcp-server": {
+      "juniper-mcp-v1": {
         "url": "http://127.0.0.1:30030/mcp/"
       }
     }
@@ -341,7 +341,7 @@ Host remote-router
 
 ## Need Help?
 
-- Check [GitHub Issues](https://github.com/Juniper/junos-mcp-server/issues)
+- Check [GitHub Issues](https://github.com/scottcrosby-securebine/juniper-mcp-v1/issues)
 - Review [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) troubleshooting section
 - Consult the Juniper PyEZ documentation
 
